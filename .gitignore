@@ -1,0 +1,15 @@
+.gradle/
+.kotlin/
+build/
+app/build/
+local.properties
+keystore.properties
+*.jks
+*.keystore
+*.iml
+.idea/
+captures/
+*.apk
+signing-credentials.txt
+.venv/
+tools/bin/
