@@ -7,7 +7,15 @@ import android.os.Build
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        if (
+            intent.action !in setOf(
+                Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+                Intent.ACTION_USER_UNLOCKED,
+            )
+        ) {
+            return
+        }
         if (!RootHookManager(context).shouldBeEnabled()) return
 
         val service = Intent(context, HookBootstrapService::class.java)

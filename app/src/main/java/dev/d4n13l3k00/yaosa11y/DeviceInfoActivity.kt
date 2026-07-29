@@ -33,6 +33,7 @@ class DeviceInfoActivity : Activity() {
     private lateinit var adbStatus: TextView
     private lateinit var permissionStatus: TextView
     private lateinit var rootHookManager: RootHookManager
+    private lateinit var privilegeManager: PrivilegeManager
 
     private val handler = Handler(Looper.getMainLooper())
     private var refreshInFlight = false
@@ -47,6 +48,7 @@ class DeviceInfoActivity : Activity() {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         rootHookManager = RootHookManager(this)
+        privilegeManager = PrivilegeManager(this)
         setContentView(createContent())
     }
 
@@ -67,7 +69,7 @@ class DeviceInfoActivity : Activity() {
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(72), dp(42), dp(72), dp(42))
+            setPadding(dp(72), dp(30), dp(72), dp(28))
         }
 
         val header = LinearLayout(this).apply {
@@ -91,10 +93,10 @@ class DeviceInfoActivity : Activity() {
         panel.addView(header)
 
         panel.addView(TextView(this).apply {
-            text = "Состояние системы, автономного ADB и root-защиты YAOS"
+            text = "Состояние системы, автономного ADB и защиты спецвозможностей"
             textSize = 16f
             setTextColor(Color.rgb(166, 179, 191))
-            setPadding(0, dp(6), 0, dp(24))
+            setPadding(0, dp(4), 0, dp(16))
         })
 
         val cards = LinearLayout(this).apply {
@@ -129,7 +131,7 @@ class DeviceInfoActivity : Activity() {
                 Color.rgb(255, 183, 77),
                 R.drawable.ic_adb,
             )
-            adbStatus.setPadding(0, dp(22), 0, 0)
+            adbStatus.setPadding(0, dp(10), 0, 0)
             addView(adbStatus)
             permissionStatus = bodyText("WRITE_SECURE_SETTINGS: проверка…")
             addView(permissionStatus)
@@ -151,29 +153,14 @@ class DeviceInfoActivity : Activity() {
         val actions = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(20), 0, 0)
+            setPadding(0, dp(12), 0, 0)
         }
         actions.addView(actionButton("Восстановить защиту", R.drawable.ic_shield) {
-            protectionStatus.text = "Защита YAOS: запускается…"
-            protectionStatus.setTextColor(Color.rgb(255, 183, 77))
-            rootHookManager.runAsync(true) { result ->
-                runOnUiThread {
-                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
-                    refresh()
-                }
-            }
+            restoreProtection()
         })
         actions.addView(
             actionButton("Включить ADB", R.drawable.ic_adb) {
-            adbStatus.text = "ADB: включается через CVTE Factory API…"
-            adbStatus.setTextColor(Color.rgb(255, 183, 77))
-            EXECUTOR.execute {
-                val result = CvteAdbBootstrap(this).enableAndWait()
-                runOnUiThread {
-                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
-                    refresh()
-                }
-            }
+                enableAdb()
             },
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -204,14 +191,78 @@ class DeviceInfoActivity : Activity() {
         return root
     }
 
+    private fun restoreProtection() {
+        protectionStatus.text = "Защита YAOS: запускается…"
+        protectionStatus.setTextColor(Color.rgb(255, 183, 77))
+        rootHookManager.runAsync(true) { result ->
+            runOnUiThread {
+                if (result.success) {
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                } else {
+                    RecoveryDialog.show(this, result.message) {
+                        restoreProtection()
+                    }
+                }
+                refresh()
+            }
+        }
+    }
+
+    private fun enableAdb() {
+        adbStatus.text = "ADB: автоматический поиск способа включения…"
+        adbStatus.setTextColor(Color.rgb(255, 183, 77))
+        EXECUTOR.execute {
+            val result = privilegeManager.ensureAdb()
+            runOnUiThread {
+                if (result.success) {
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                } else {
+                    RecoveryDialog.show(this, result.message) {
+                        enableAdb()
+                    }
+                }
+                refresh()
+            }
+        }
+    }
+
     private fun refresh() {
         updateStaticDetails()
         if (refreshInFlight) return
         refreshInFlight = true
-        rootHookManager.queryStateAsync { state ->
+        EXECUTOR.execute {
+            val state = rootHookManager.queryState()
+            val privilege = privilegeManager.snapshot()
             runOnUiThread {
                 refreshInFlight = false
                 updateProtectionState(state)
+                adbStatus.text =
+                    "ADB shell: ${if (privilege.adbAvailable) "доступен" else "недоступен"}"
+                adbStatus.setTextColor(
+                    if (privilege.adbAvailable) {
+                        Color.rgb(129, 216, 161)
+                    } else {
+                        Color.rgb(255, 128, 128)
+                    },
+                )
+                permissionStatus.text = buildString {
+                    append(
+                        "WRITE_SECURE_SETTINGS: " +
+                            if (privilege.secureSettingsGranted) "выдано" else "ещё не выдано",
+                    )
+                    appendLine()
+                    append(
+                        "Root-бэкенд: " +
+                            (privilege.rootBackend?.displayName ?: "не выбран"),
+                    )
+                }
+                permissionStatus.setTextColor(
+                    if (privilege.secureSettingsGranted) {
+                        Color.rgb(166, 179, 191)
+                    } else {
+                        Color.rgb(255, 183, 77)
+                    },
+                )
             }
         }
     }
@@ -232,48 +283,54 @@ class DeviceInfoActivity : Activity() {
             append("CVTE Factory API: ${if (cvteFactoryApi) "найден" else "не найден"}")
         }
 
-        val adbEnabled = Settings.Global.getInt(
-            contentResolver,
-            Settings.Global.ADB_ENABLED,
-            0,
-        ) != 0
-        adbStatus.text = "ADB: ${if (adbEnabled) "включён" else "выключен"}"
-        adbStatus.setTextColor(
-            if (adbEnabled) Color.rgb(129, 216, 161) else Color.rgb(255, 128, 128),
-        )
-
-        val permissionGranted =
-            checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
-                PackageManager.PERMISSION_GRANTED
-        permissionStatus.text =
-            "WRITE_SECURE_SETTINGS: ${if (permissionGranted) "выдано через root" else "ещё не выдано"}"
-        permissionStatus.setTextColor(
-            if (permissionGranted) Color.rgb(166, 179, 191) else Color.rgb(255, 183, 77),
-        )
     }
 
     private fun updateProtectionState(state: RootHookManager.State) {
+        val snapshot = rootHookManager.protectionSnapshot()
+        val details = buildString {
+            append("Закреплено: ${snapshot.protectedComponents.size}")
+            append(" • включено: ${snapshot.desiredEnabled.size}")
+            if (snapshot.lastReconcileMessage.isNotBlank()) {
+                appendLine()
+                append(
+                    when {
+                        snapshot.lastReconcileMessage.contains("в норме", ignoreCase = true) ->
+                            "Сверка: в норме"
+                        snapshot.lastReconcileMessage.length > 58 ->
+                            snapshot.lastReconcileMessage.take(55) + "…"
+                        else -> snapshot.lastReconcileMessage
+                    },
+                )
+            }
+        }
         when (state) {
             RootHookManager.State.ENABLED -> {
                 protectionStatus.text = "Защита YAOS: включена"
                 protectionStatus.setTextColor(Color.rgb(129, 216, 161))
-                protectionDetails.text = "Native-hook активен в текущем процессе YAOS"
+                protectionDetails.text = "Native-hook: активен\n$details"
+            }
+            RootHookManager.State.GUARD_ONLY -> {
+                protectionStatus.text = "Защита YAOS: guard активен"
+                protectionStatus.setTextColor(Color.rgb(129, 216, 161))
+                protectionDetails.text =
+                    "Настройки сверяются без native-hook; CVTE не требуется\n$details"
             }
             RootHookManager.State.DISABLED -> {
                 protectionStatus.text = "Защита YAOS: отключена"
                 protectionStatus.setTextColor(Color.rgb(177, 187, 197))
-                protectionDetails.text = "Root-daemon установлен, фильтрация настроек отключена"
+                protectionDetails.text =
+                    "Root-daemon установлен, фильтрация настроек отключена\n$details"
             }
             RootHookManager.State.STARTING -> {
                 protectionStatus.text = "Защита YAOS: запускается…"
                 protectionStatus.setTextColor(Color.rgb(255, 183, 77))
-                protectionDetails.text = "Ожидание внедрения native-hook"
+                protectionDetails.text = "Ожидание внедрения native-hook\n$details"
             }
             RootHookManager.State.UNAVAILABLE -> {
                 protectionStatus.text = "Защита YAOS: хук пока не запущен"
                 protectionStatus.setTextColor(Color.rgb(255, 128, 128))
                 protectionDetails.text =
-                    "Статус обновляется автоматически; можно нажать «Восстановить защиту»"
+                    "Guard продолжает сверку настроек; можно восстановить native-hook\n$details"
             }
         }
     }
@@ -281,17 +338,17 @@ class DeviceInfoActivity : Activity() {
     private fun card(): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(34), dp(30), dp(34), dp(30))
+            setPadding(dp(28), dp(18), dp(28), dp(18))
             background = rounded(Color.rgb(28, 34, 43), 16)
         }
 
     private fun cardTitle(text: String, iconRes: Int): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = 25f
+            textSize = 22f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(22))
+            setPadding(0, 0, 0, dp(12))
             setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
             compoundDrawablePadding = dp(14)
         }
@@ -299,18 +356,18 @@ class DeviceInfoActivity : Activity() {
     private fun bodyText(text: String): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = 17f
+            textSize = 15f
             setTextColor(Color.rgb(166, 179, 191))
-            setLineSpacing(dp(3).toFloat(), 1f)
+            setLineSpacing(dp(1).toFloat(), 1f)
         }
 
     private fun statusText(text: String, color: Int, iconRes: Int): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = 21f
+            textSize = 18f
             setTextColor(color)
             typeface = Typeface.DEFAULT_BOLD
-            setPadding(0, 0, 0, dp(6))
+            setPadding(0, 0, 0, dp(3))
             setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
             compoundDrawablePadding = dp(12)
         }
@@ -318,10 +375,10 @@ class DeviceInfoActivity : Activity() {
     private fun actionButton(text: String, iconRes: Int, action: () -> Unit): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = 17f
+            textSize = 16f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            setPadding(dp(26), dp(15), dp(26), dp(15))
+            setPadding(dp(24), dp(12), dp(24), dp(12))
             background = buttonBackground()
             isFocusable = true
             isClickable = true

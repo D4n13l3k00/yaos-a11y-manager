@@ -41,6 +41,7 @@ class AppManagerActivity : Activity() {
     private lateinit var search: EditText
     private lateinit var filterButton: Button
     private lateinit var cleanupButton: Button
+    private lateinit var presetsButton: Button
     private val operationButtons = ArrayList<Button>()
     private var apps: List<ManagedApp> = emptyList()
     private var filter = Filter.ALL
@@ -138,6 +139,18 @@ class AppManagerActivity : Activity() {
             nextFocusUpId = filterButton.id
         }
         cleanupRow.addView(cleanupButton)
+        presetsButton = actionButton(
+            "Пресеты отключения",
+            R.drawable.ic_shield_off,
+        ) {
+            startActivity(Intent(this, PackagePresetsActivity::class.java))
+        }.apply {
+            id = View.generateViewId()
+            nextFocusUpId = filterButton.id
+            nextFocusLeftId = cleanupButton.id
+        }
+        cleanupButton.nextFocusRightId = presetsButton.id
+        cleanupRow.addView(presetsButton)
         for (index in 0 until toolbar.childCount) {
             toolbar.getChildAt(index).nextFocusDownId = cleanupButton.id
         }
@@ -219,8 +232,10 @@ class AppManagerActivity : Activity() {
         visible.forEach { appList.addView(appRow(it)) }
         if (appList.childCount > 0) {
             val firstRowId = appList.getChildAt(0).id
-            cleanupButton.nextFocusRightId = firstRowId
+            cleanupButton.nextFocusRightId = presetsButton.id
             cleanupButton.nextFocusDownId = firstRowId
+            presetsButton.nextFocusRightId = firstRowId
+            presetsButton.nextFocusDownId = firstRowId
         }
     }
 

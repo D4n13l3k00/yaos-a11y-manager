@@ -25,6 +25,7 @@ data class ManagedApp(
 
 class AppManagerController(private val context: Context) {
     data class Result(val success: Boolean, val message: String)
+    private val privilegeManager = PrivilegeManager(context)
 
     enum class Operation {
         FREEZE,
@@ -85,6 +86,22 @@ class AppManagerController(private val context: Context) {
         }
     }
 
+    fun setPackagesEnabledAsync(
+        packageNames: List<String>,
+        enabled: Boolean,
+        callback: (Result) -> Unit,
+    ) {
+        EXECUTOR.execute {
+            val result = runCatching {
+                setPackagesEnabled(packageNames, enabled)
+            }.fold(
+                onSuccess = { Result(true, it) },
+                onFailure = { Result(false, it.message ?: it.javaClass.simpleName) },
+            )
+            callback(result)
+        }
+    }
+
     fun downloadAndInstallAsync(
         url: String,
         status: (String) -> Unit = {},
@@ -129,6 +146,10 @@ class AppManagerController(private val context: Context) {
         check(packageName != context.packageName || operation !in DESTRUCTIVE_SELF_OPERATIONS) {
             "YAOS Manager не может удалить или заморозить сам себя"
         }
+        if (operation == Operation.CLEAR_CACHE) {
+            clearCache(packageName)
+            return operation.successMessage(target.label)
+        }
 
         openAdb().use { adb ->
             val output = when (operation) {
@@ -146,8 +167,7 @@ class AppManagerController(private val context: Context) {
                     shellOk(adb, "pm clear --user 0 $packageName")
                 Operation.FORCE_STOP ->
                     shellOk(adb, "am force-stop --user 0 $packageName")
-                Operation.CLEAR_CACHE ->
-                    clearCache(adb, packageName)
+                Operation.CLEAR_CACHE -> error("Недостижимая операция")
                 Operation.TRIM_ALL_CACHES ->
                     error("Недостижимая операция")
             }
@@ -156,10 +176,56 @@ class AppManagerController(private val context: Context) {
         }
     }
 
-    private fun clearCache(adb: Dadb, packageName: String): String {
-        val dex = prepareAtSudoDex()
-        val remoteDex = "/data/local/tmp/yaos-app-manager.dex"
-        push(adb, dex, remoteDex, MODE_FILE)
+    private fun setPackagesEnabled(packageNames: List<String>, enabled: Boolean): String {
+        val targets = packageNames.distinct().map(::validatePackageName)
+        check(targets.isNotEmpty()) { "Не выбрано ни одного пакета" }
+        check(targets.none { it in BLOCKED_PRESET_PACKAGES }) {
+            "Защищённый системный пакет нельзя изменить через пресет"
+        }
+
+        return openAdb().use { adb ->
+            val action = if (enabled) "включено" else "отключено"
+            val lines = ArrayList<String>()
+            var successful = 0
+            targets.forEach { packageName ->
+                val command = if (enabled) {
+                    "pm enable --user 0 $packageName"
+                } else {
+                    "pm disable-user --user 0 $packageName"
+                }
+                val attempt = runCatching {
+                    val output = shellOk(adb, command)
+                    checkCommandResult(
+                        if (enabled) Operation.UNFREEZE else Operation.FREEZE,
+                        output,
+                    )
+                }
+                if (attempt.isSuccess) {
+                    successful += 1
+                    lines += "OK  $packageName"
+                } else {
+                    lines += "ERR $packageName: " +
+                        (attempt.exceptionOrNull()?.message ?: "неизвестная ошибка")
+                }
+            }
+
+            val failed = targets.size - successful
+            val report = buildString {
+                append("Пакетов $action: $successful из ${targets.size}")
+                if (failed > 0) append(" • ошибок: $failed")
+                appendLine()
+                append(lines.joinToString("\n"))
+            }
+            check(failed == 0) { report }
+            report
+        }
+    }
+
+    private fun clearCache(packageName: String): String {
+        val root = privilegeManager.ensureRootBackend()
+        check(root.success && root.rootBackend != null) {
+            "Для точечной очистки чужого кэша нужен root: ${root.message}"
+        }
         val paths = listOf(
             "/data/user/0/$packageName/cache",
             "/data/user/0/$packageName/code_cache",
@@ -170,9 +236,13 @@ class AppManagerController(private val context: Context) {
             "for d in $paths; do " +
                 "if [ -d \"\$d\" ]; then find \"\$d\" -mindepth 1 -maxdepth 1 -exec rm -rf {} +; fi; " +
                 "done; echo CACHE_OK"
-        val output = shellOk(adb, atSudo(remoteDex, command))
-        check("CACHE_OK" in output) { "Root не подтвердил очистку кэша: ${output.trim()}" }
-        return output
+        return privilegeManager.openAdb().use { adb ->
+            val output = privilegeManager.shellAsRoot(adb, root.rootBackend, command)
+            check("CACHE_OK" in output) {
+                "${root.rootBackend.displayName} не подтвердил очистку кэша: ${output.trim()}"
+            }
+            output
+        }
     }
 
     private fun checkCommandResult(operation: Operation, output: String) {
@@ -199,7 +269,7 @@ class AppManagerController(private val context: Context) {
             connection.instanceFollowRedirects = false
             connection.connectTimeout = 15_000
             connection.readTimeout = 60_000
-            connection.setRequestProperty("User-Agent", "YAOS-A11Y-Manager/1.0.0")
+            connection.setRequestProperty("User-Agent", "YAOS-A11Y-Manager/1.1.0")
             connection.connect()
             if (connection.responseCode in 300..399) {
                 check(redirect < MAX_REDIRECTS) { "Слишком много перенаправлений" }
@@ -252,25 +322,7 @@ class AppManagerController(private val context: Context) {
         openAdb().use { adb ->
             val remote = "/data/local/tmp/yaos-upload-${System.currentTimeMillis()}.apk"
             try {
-                val source = file.canonicalPath
-                val cachePrefix = context.cacheDir.canonicalPath.trimEnd(File.separatorChar) +
-                    File.separator
-                if (source.startsWith(cachePrefix)) {
-                    val dex = prepareAtSudoDex()
-                    val remoteDex = "/data/local/tmp/yaos-app-manager.dex"
-                    push(adb, dex, remoteDex, MODE_FILE)
-                    val copied = shellOk(
-                        adb,
-                        atSudo(
-                            remoteDex,
-                            "cp $source $remote && chmod 644 $remote && " +
-                                "chown 2000:2000 $remote && echo COPY_OK",
-                        ),
-                    )
-                    check("COPY_OK" in copied) { "Root не подтвердил подготовку APK" }
-                } else {
-                    push(adb, file, remote, MODE_FILE)
-                }
+                push(adb, file, remote, MODE_FILE)
                 val output = shellOk(adb, "pm install -r -d --user 0 $remote")
                 check("Success" in output) { "Package Manager: ${output.trim()}" }
                 return "APK установлен"
@@ -304,30 +356,10 @@ class AppManagerController(private val context: Context) {
     }
 
     private fun openAdb(): Dadb =
-        Dadb.create(
-            host = "127.0.0.1",
-            port = 5555,
-            keyPair = null,
-            connectTimeout = 5_000,
-            socketTimeout = 180_000,
-        )
-
-    private fun atSudo(dex: String, command: String): String =
-        "CLASSPATH=$dex app_process /system/bin " +
-            "--nice-name=com.cvte.tv.api.impl AtSudoClient '${command.also {
-                check('\'' !in it) { "Root-команда содержит недопустимый символ" }
-            }}'"
+        privilegeManager.openAdb(socketTimeout = 180_000)
 
     private fun safeFileName(value: String): String =
         value.replace(Regex("[^A-Za-z0-9._-]"), "_").take(96)
-
-    private fun prepareAtSudoDex(): File {
-        val dex = File(context.filesDir, "atsudo-app-manager.dex")
-        context.assets.open("root/atsudo.dex").use { input ->
-            FileOutputStream(dex).use { output -> input.copyTo(output) }
-        }
-        return dex
-    }
 
     private val Operation.displayName: String
         get() = when (this) {
@@ -365,6 +397,13 @@ class AppManagerController(private val context: Context) {
             Operation.UNINSTALL_FOR_USER,
             Operation.UNINSTALL_COMPLETELY,
             Operation.CLEAR_DATA,
+        )
+        private val BLOCKED_PRESET_PACKAGES = setOf(
+            "android",
+            "com.android.systemui",
+            "com.android.settings",
+            "com.yandex.tv.services.platform",
+            "dev.d4n13l3k00.yaosa11y",
         )
         private val EXECUTOR = Executors.newSingleThreadExecutor()
     }

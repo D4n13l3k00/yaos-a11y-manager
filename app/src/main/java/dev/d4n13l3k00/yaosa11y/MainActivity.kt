@@ -1,7 +1,6 @@
 package dev.d4n13l3k00.yaosa11y
 
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
@@ -20,7 +19,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
-import dadb.Dadb
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
@@ -37,13 +35,17 @@ class MainActivity : Activity() {
         rootHookManager = RootHookManager(this)
         setContentView(createContent())
         if (!rootHookManager.hasStoredChoice()) {
-            rootHookManager.runAsync(true) { refreshStatus() }
+            enableProtectionWithRecovery()
         } else if (rootHookManager.shouldBeEnabled()) {
+            rootHookManager.ensureProtectionServiceRunning()
             rootHookManager.queryStateAsync { state ->
-                if (state == RootHookManager.State.ENABLED) {
+                if (
+                    state == RootHookManager.State.ENABLED ||
+                    state == RootHookManager.State.GUARD_ONLY
+                ) {
                     refreshStatus()
                 } else {
-                    rootHookManager.runAsync(true) { refreshStatus() }
+                    enableProtectionWithRecovery()
                 }
             }
         } else {
@@ -151,10 +153,10 @@ class MainActivity : Activity() {
         secondRow.addView(
             sectionCard(
                 title = "Инженерное меню",
-                subtitle = "Factory Menu платы TP.MT9632.PB721: изображение, звук и отладка",
+                subtitle = "Все варианты Factory Menu и меню разработчика для ADB",
                 accent = Color.rgb(255, 183, 77),
                 iconRes = R.drawable.ic_engineering,
-            ) { openFactoryMenu() },
+            ) { startActivity(Intent(this, EngineeringActivity::class.java)) },
             cardParams(),
         )
         secondRow.addView(
@@ -172,7 +174,7 @@ class MainActivity : Activity() {
         secondRow.addView(
             sectionCard(
                 title = "Об устройстве",
-                subtitle = "Модель, плата, Android, IP-адрес и состояние автономного root",
+                subtitle = "Модель, плата, Android, IP-адрес и доступные привилегии",
                 accent = Color.rgb(170, 180, 190),
                 iconRes = R.drawable.ic_device,
             ) { startActivity(Intent(this, DeviceInfoActivity::class.java)) },
@@ -215,7 +217,7 @@ class MainActivity : Activity() {
         }
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER_VERTICAL
+            gravity = Gravity.TOP
             setPadding(dp(26), dp(22), dp(26), dp(22))
             background = cardBackground()
             isFocusable = true
@@ -258,6 +260,7 @@ class MainActivity : Activity() {
             runOnUiThread {
                 protectionStatus.text = when (state) {
                     RootHookManager.State.ENABLED -> "Защита YAOS: включена"
+                    RootHookManager.State.GUARD_ONLY -> "Защита YAOS: guard без root"
                     RootHookManager.State.DISABLED -> "Защита YAOS: отключена"
                     RootHookManager.State.STARTING -> "Защита YAOS: запускается…"
                     RootHookManager.State.UNAVAILABLE -> "Защита YAOS: недоступна"
@@ -265,6 +268,7 @@ class MainActivity : Activity() {
                 protectionStatus.setTextColor(
                     when (state) {
                         RootHookManager.State.ENABLED -> Color.rgb(129, 216, 161)
+                        RootHookManager.State.GUARD_ONLY -> Color.rgb(129, 216, 161)
                         RootHookManager.State.DISABLED -> Color.rgb(177, 187, 197)
                         else -> Color.rgb(255, 183, 77)
                     },
@@ -280,62 +284,27 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun openFactoryMenu() {
-        val oemServiceIntent = Intent().setClassName(
-            OEM_FACTORY_MENU_PACKAGE,
-            OEM_FACTORY_MENU_SERVICE,
-        ).putExtra(OEM_FACTORY_MENU_COMMAND_KEY, OEM_FACTORY_MENU_COMMAND)
-        if (runCatching { startService(oemServiceIntent) }.isSuccess) return
-
-        val componentIntent = Intent().setClassName(
-            FACTORY_MENU_PACKAGE,
-            "$FACTORY_MENU_PACKAGE.MainActivity",
-        )
-        runCatching { startActivity(componentIntent) }
-            .onFailure { triggerFactoryMenuHotkey() }
-    }
-
-    private fun triggerFactoryMenuHotkey() {
-        Toast.makeText(this, "Factory Menu: отправка сервисной комбинации…", Toast.LENGTH_SHORT).show()
+    private fun ensureAdbAsync(showResult: Boolean) {
         EXECUTOR.execute {
-            val result = runCatching {
-                Dadb.create(
-                    host = "127.0.0.1",
-                    port = 5555,
-                    keyPair = null,
-                    connectTimeout = 5_000,
-                    socketTimeout = 20_000,
-                ).use { adb ->
-                    val response = adb.shell(
-                        "input keyevent 3; sleep 0.4; input keyevent 178; sleep 0.4; " +
-                            "input keyevent 21; input keyevent 19; input keyevent 21; " +
-                            "input keyevent 19; input keyevent 4; sleep 0.3; input keyevent 178",
-                    )
-                    check(response.exitCode == 0) { response.allOutput.trim() }
+            val result = PrivilegeManager(this).ensureAdb()
+            if (!result.success) {
+                RecoveryDialog.show(this, result.message) {
+                    ensureAdbAsync(showResult = true)
                 }
-            }
-            if (result.isFailure) {
+            } else if (showResult) {
                 runOnUiThread {
-                    AlertDialog.Builder(this)
-                        .setTitle("Factory Menu не открылось")
-                        .setMessage(
-                            "Установленный компонент com.stb.factorymenu недоступен. " +
-                                "Комбинация с пульта: Home → Source → быстро Влево, Вверх, " +
-                                "Влево, Вверх, Назад → Source.",
-                        )
-                        .setPositiveButton("Закрыть", null)
-                        .show()
+                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
 
-    private fun ensureAdbAsync(showResult: Boolean) {
-        EXECUTOR.execute {
-            val result = CvteAdbBootstrap(this).enableAndWait()
-            if (showResult || !result.success) {
-                runOnUiThread {
-                    Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+    private fun enableProtectionWithRecovery() {
+        rootHookManager.runAsync(true) { result ->
+            refreshStatus()
+            if (!result.success) {
+                RecoveryDialog.show(this, result.message) {
+                    enableProtectionWithRecovery()
                 }
             }
         }
@@ -368,13 +337,6 @@ class MainActivity : Activity() {
         (value * resources.displayMetrics.density + 0.5f).toInt()
 
     companion object {
-        private const val FACTORY_MENU_PACKAGE = "com.stb.factorymenu"
-        private const val OEM_FACTORY_MENU_PACKAGE = "com.cvte.fac.menu"
-        private const val OEM_FACTORY_MENU_SERVICE =
-            "com.cvte.fac.menu.app.TvMenuWindowManagerService"
-        private const val OEM_FACTORY_MENU_COMMAND_KEY = "com.cvte.fac.menu.commmand"
-        private const val OEM_FACTORY_MENU_COMMAND =
-            "com.cvte.fac.menu.commmand.factory_menu"
         private val EXECUTOR = Executors.newSingleThreadExecutor()
     }
 }

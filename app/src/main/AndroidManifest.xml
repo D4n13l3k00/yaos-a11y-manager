@@ -19,6 +19,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="false"
@@ -66,12 +67,22 @@
             android:launchMode="singleTask" />
 
         <activity
+            android:name=".PackagePresetsActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
+
+        <activity
             android:name=".WebInstallActivity"
             android:exported="false"
             android:launchMode="singleTask" />
 
         <activity
             android:name=".DeviceInfoActivity"
+            android:exported="false"
+            android:launchMode="singleTask" />
+
+        <activity
+            android:name=".EngineeringActivity"
             android:exported="false"
             android:launchMode="singleTask" />
 
@@ -90,6 +101,8 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.USER_UNLOCKED" />
             </intent-filter>
         </receiver>
     </application>

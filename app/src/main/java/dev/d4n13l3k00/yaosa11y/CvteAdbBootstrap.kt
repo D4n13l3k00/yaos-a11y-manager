@@ -7,8 +7,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.Parcel
 import android.util.Log
-import java.net.InetSocketAddress
-import java.net.Socket
+import dadb.Dadb
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
@@ -26,7 +25,9 @@ class CvteAdbBootstrap(private val context: Context) {
     )
 
     fun enableAndWait(timeoutMillis: Long = 15_000): Result {
-        if (isAdbListening()) {
+        val initialProbe = probeLocalAdbShell()
+        Log.i(TAG, initialProbe.message)
+        if (initialProbe.success) {
             // Persist the same switch exposed as Debug -> ADB Enable.
             val vendorResult = enableThroughFactoryService(BIND_TIMEOUT_MILLIS)
             Log.i(TAG, vendorResult.message)
@@ -38,15 +39,18 @@ class CvteAdbBootstrap(private val context: Context) {
         if (!vendorResult.success) return vendorResult
 
         val deadline = System.currentTimeMillis() + timeoutMillis
+        var lastProbe = initialProbe
         while (System.currentTimeMillis() < deadline) {
-            if (isAdbListening()) {
+            lastProbe = probeLocalAdbShell()
+            if (lastProbe.success) {
                 return Result(true, "ADB включён через системный CVTE Factory API")
             }
             Thread.sleep(250)
         }
         return Result(
             false,
-            "CVTE Factory API принял команду, но порт 127.0.0.1:5555 не открылся",
+            "CVTE Factory API принял команду, но локальный ADB shell недоступен: " +
+                lastProbe.message,
         )
     }
 
@@ -147,13 +151,39 @@ class CvteAdbBootstrap(private val context: Context) {
         }
     }
 
-    private fun isAdbListening(): Boolean =
+    fun probeLocalAdbShell(): AdbProbe =
         runCatching {
-            Socket().use {
-                it.connect(InetSocketAddress(LOCAL_ADB_HOST, LOCAL_ADB_PORT), 500)
+            Dadb.create(
+                host = LOCAL_ADB_HOST,
+                port = LOCAL_ADB_PORT,
+                keyPair = null,
+                connectTimeout = ADB_PROBE_CONNECT_TIMEOUT_MILLIS,
+                socketTimeout = ADB_PROBE_SOCKET_TIMEOUT_MILLIS,
+            ).use { adb ->
+                val response = adb.shell("echo $ADB_PROBE_TOKEN")
+                check(response.exitCode == 0) {
+                    "shell завершился с кодом ${response.exitCode}: ${response.allOutput.trim()}"
+                }
+                check(
+                    response.allOutput.lineSequence().any { line ->
+                        line.trim() == ADB_PROBE_TOKEN
+                    },
+                ) {
+                    "shell не вернул контрольную строку"
+                }
             }
-            true
-        }.getOrDefault(false)
+            AdbProbe(true, "ADB shell доступен")
+        }.getOrElse { error ->
+            AdbProbe(
+                false,
+                error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName,
+            )
+        }
+
+    data class AdbProbe(
+        val success: Boolean,
+        val message: String,
+    )
 
     companion object {
         private const val FACTORY_API_PACKAGE = "com.cvte.factory.service"
@@ -170,5 +200,8 @@ class CvteAdbBootstrap(private val context: Context) {
         private const val INIT_RETRY_DELAY_MILLIS = 250L
         private const val LOCAL_ADB_HOST = "127.0.0.1"
         private const val LOCAL_ADB_PORT = 5555
+        private const val ADB_PROBE_TOKEN = "YAOS_ADB_SHELL_OK"
+        private const val ADB_PROBE_CONNECT_TIMEOUT_MILLIS = 1_000
+        private const val ADB_PROBE_SOCKET_TIMEOUT_MILLIS = 2_000
     }
 }

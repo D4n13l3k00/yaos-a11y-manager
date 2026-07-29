@@ -38,7 +38,9 @@ class AccessibilityActivity : Activity() {
         override fun onChange(selfChange: Boolean) {
             renderServices()
             if (::rootHookManager.isInitialized && rootHookManager.shouldBeEnabled()) {
-                rootHookManager.rememberCurrentAccessibility()
+                rootHookManager.reconcileAsync { result ->
+                    if (result.changed) runOnUiThread { renderServices() }
+                }
             }
         }
     }
@@ -54,6 +56,11 @@ class AccessibilityActivity : Activity() {
             false,
             observer,
         )
+        contentResolver.registerContentObserver(
+            Settings.Secure.getUriFor(Settings.Secure.ACCESSIBILITY_ENABLED),
+            false,
+            observer,
+        )
         if (rootHookManager.hasStoredChoice()) {
             refreshHookStatus()
         } else {
@@ -65,7 +72,9 @@ class AccessibilityActivity : Activity() {
         super.onResume()
         renderServices()
         if (rootHookManager.shouldBeEnabled()) {
-            rootHookManager.rememberCurrentAccessibility()
+            rootHookManager.reconcileAsync { result ->
+                if (result.changed) runOnUiThread { renderServices() }
+            }
         }
     }
 
@@ -181,9 +190,10 @@ class AccessibilityActivity : Activity() {
         val canWrite = repository.canWriteSecureSettings()
         val entries = repository.entries()
         val enabledCount = entries.count { it.enabled }
+        val protected = rootHookManager.protectionSnapshot().protectedComponents
 
         statusView.text = if (canWrite) {
-            "Найдено служб: ${entries.size} • включено: $enabledCount"
+            "Найдено служб: ${entries.size} • включено: $enabledCount • закреплено: ${protected.size}"
         } else {
             "Нет системного разрешения. Кнопка защиты выдаст его через локальный ADB."
         }
@@ -192,10 +202,17 @@ class AccessibilityActivity : Activity() {
         )
 
         serviceList.removeAllViews()
-        entries.forEach { serviceList.addView(serviceRow(it, canWrite)) }
+        entries.forEach {
+            serviceList.addView(serviceRow(it, canWrite, it.component in protected))
+        }
     }
 
-    private fun serviceRow(entry: AccessibilityEntry, canWrite: Boolean): View {
+    private fun serviceRow(
+        entry: AccessibilityEntry,
+        canWrite: Boolean,
+        protected: Boolean,
+    ): View {
+        val available = entry.availability == AccessibilityAvailability.AVAILABLE
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -203,14 +220,22 @@ class AccessibilityActivity : Activity() {
             background = focusBackground()
             isFocusable = true
             isClickable = true
-            alpha = if (canWrite) 1f else 0.65f
+            alpha = if (canWrite && available) 1f else 0.65f
             setOnClickListener {
-                if (canWrite) confirmToggle(entry) else showPermissionHelp()
+                when {
+                    !available -> Toast.makeText(
+                        this@AccessibilityActivity,
+                        availabilityLabel(entry.availability),
+                        Toast.LENGTH_LONG,
+                    ).show()
+                    canWrite -> confirmToggle(entry)
+                    else -> showPermissionHelp()
+                }
             }
         }
 
         row.addView(ImageView(this).apply {
-            setImageDrawable(entry.info.resolveInfo.loadIcon(packageManager))
+            setImageDrawable(entry.resolveInfo.loadIcon(packageManager))
             scaleType = ImageView.ScaleType.FIT_CENTER
         }, LinearLayout.LayoutParams(dp(54), dp(54)).apply {
             marginEnd = dp(20)
@@ -226,7 +251,10 @@ class AccessibilityActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
         })
         labels.addView(TextView(this).apply {
-            text = entry.component.flattenToShortString()
+            text = buildString {
+                append(entry.component.flattenToShortString())
+                if (!available) append(" • ${availabilityLabel(entry.availability)}")
+            }
             setTextColor(Color.rgb(153, 166, 179))
             textSize = 12f
             maxLines = 1
@@ -241,6 +269,23 @@ class AccessibilityActivity : Activity() {
             gravity = Gravity.CENTER
             background = pillBackground(entry.enabled)
             setPadding(dp(18), dp(8), dp(18), dp(8))
+        })
+
+        row.addView(Button(this).apply {
+            text = if (protected) "ЗАЩИЩЕНА" else "ЗАЩИТИТЬ"
+            isAllCaps = false
+            textSize = 12f
+            setTextColor(
+                if (protected) Color.rgb(129, 216, 161) else Color.rgb(177, 187, 197),
+            )
+            background = focusBackground()
+            isFocusable = true
+            setPadding(dp(14), 0, dp(14), 0)
+            setOnClickListener {
+                confirmProtection(entry, protected)
+            }
+        }, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)).apply {
+            marginStart = dp(12)
         })
 
         return row.apply {
@@ -272,16 +317,17 @@ class AccessibilityActivity : Activity() {
     }
 
     private fun toggle(component: ComponentName, enabled: Boolean, label: String) {
+        val previousDesired =
+            component in rootHookManager.protectionSnapshot().desiredEnabled
+        rootHookManager.recordUserState(component, enabled)
         if (!repository.setEnabled(component, enabled)) {
+            rootHookManager.recordUserState(component, previousDesired)
             Toast.makeText(this, "Не удалось изменить системную настройку", Toast.LENGTH_LONG).show()
             return
         }
 
         Handler(Looper.getMainLooper()).postDelayed({
             val persisted = component in repository.enabledComponents()
-            if (persisted == enabled) {
-                rootHookManager.rememberCurrentAccessibility()
-            }
             renderServices()
             if (persisted != enabled) {
                 Toast.makeText(
@@ -292,6 +338,46 @@ class AccessibilityActivity : Activity() {
             }
         }, 450)
     }
+
+    private fun confirmProtection(entry: AccessibilityEntry, currentlyProtected: Boolean) {
+        val protect = !currentlyProtected
+        AlertDialog.Builder(this)
+            .setTitle(
+                if (protect) {
+                    "Защитить ${entry.label}?"
+                } else {
+                    "Снять защиту с ${entry.label}?"
+                },
+            )
+            .setMessage(
+                if (protect) {
+                    "Приложение запомнит текущее состояние этой службы и восстановит его, если YAOS изменит системные настройки."
+                } else {
+                    "Служба останется в текущем состоянии, но автоматическое восстановление для неё прекратится."
+                },
+            )
+            .setNegativeButton("Отмена", null)
+            .setPositiveButton(if (protect) "Защитить" else "Снять защиту") { _, _ ->
+                rootHookManager.setServiceProtected(
+                    entry.component,
+                    protect,
+                    entry.enabled,
+                )
+                if (protect && rootHookManager.shouldBeEnabled()) {
+                    rootHookManager.reconcileAsync()
+                }
+                renderServices()
+            }
+            .show()
+    }
+
+    private fun availabilityLabel(availability: AccessibilityAvailability): String =
+        when (availability) {
+            AccessibilityAvailability.AVAILABLE -> "доступна"
+            AccessibilityAvailability.PACKAGE_DISABLED -> "пакет отключён"
+            AccessibilityAvailability.COMPONENT_DISABLED -> "компонент отключён"
+            AccessibilityAvailability.INVALID_DECLARATION -> "неполное объявление службы"
+        }
 
     private fun showPermissionHelp() {
         AlertDialog.Builder(this)
@@ -313,11 +399,13 @@ class AccessibilityActivity : Activity() {
         rootHookManager.runAsync(enabled) { result ->
             runOnUiThread {
                 setOperationBusy(false)
-                Toast.makeText(
-                    this,
-                    result.message,
-                    if (result.success) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
-                ).show()
+                if (result.success) {
+                    Toast.makeText(this, result.message, Toast.LENGTH_SHORT).show()
+                } else {
+                    RecoveryDialog.show(this, result.message) {
+                        changeHookState(enabled)
+                    }
+                }
                 renderServices()
                 refreshHookStatus()
             }
@@ -329,6 +417,8 @@ class AccessibilityActivity : Activity() {
             runOnUiThread {
                 hookStatusView.text = when (state) {
                     RootHookManager.State.ENABLED -> "Защита YAOS: включена"
+                    RootHookManager.State.GUARD_ONLY ->
+                        "Защита YAOS: guard активен, native-hook недоступен"
                     RootHookManager.State.DISABLED -> "Защита YAOS: отключена"
                     RootHookManager.State.STARTING -> "Защита YAOS: запускается…"
                     RootHookManager.State.UNAVAILABLE -> "Защита YAOS: недоступна"
@@ -336,6 +426,7 @@ class AccessibilityActivity : Activity() {
                 hookStatusView.setTextColor(
                     when (state) {
                         RootHookManager.State.ENABLED -> Color.rgb(129, 216, 161)
+                        RootHookManager.State.GUARD_ONLY -> Color.rgb(129, 216, 161)
                         RootHookManager.State.DISABLED -> Color.rgb(177, 187, 197)
                         else -> Color.rgb(255, 183, 77)
                     },

@@ -92,13 +92,21 @@ jobs:
             app/build/outputs/apk/release/app-release.apk
 
       - name: Name release APK
-        run: cp app/build/outputs/apk/release/app-release.apk YAOS-A11Y-Manager-v1.0.0.apk
+        shell: bash
+        run: |
+          version="$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" app/build.gradle)"
+          test -n "$version"
+          release_name="YAOS-A11Y-Manager-v${version}"
+          release_apk="${release_name}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$release_apk"
+          printf 'RELEASE_NAME=%s\n' "$release_name" >> "$GITHUB_ENV"
+          printf 'RELEASE_APK=%s\n' "$release_apk" >> "$GITHUB_ENV"
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v7
         with:
-          name: YAOS-A11Y-Manager-v1.0.0
-          path: YAOS-A11Y-Manager-v1.0.0.apk
+          name: ${{ env.RELEASE_NAME }}
+          path: ${{ env.RELEASE_APK }}
           if-no-files-found: error
 
       - name: Publish tagged release
@@ -109,11 +117,11 @@ jobs:
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
-              YAOS-A11Y-Manager-v1.0.0.apk \
+              "$RELEASE_APK" \
               --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
-              YAOS-A11Y-Manager-v1.0.0.apk \
+              "$RELEASE_APK" \
               --generate-notes \
               --title "$GITHUB_REF_NAME"
           fi
