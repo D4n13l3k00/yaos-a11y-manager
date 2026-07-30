@@ -1,23 +1,19 @@
-# YAOS Manager 1.1
+<div align="center">
+  <h1>YaOS A11y Manager</h1>
+  <p>
+    <a href="https://github.com/D4n13l3k00/yaos-a11y-manager/releases/latest"><img src="https://img.shields.io/github/v/release/D4n13l3k00/yaos-a11y-manager?display_name=tag" alt="Release"></a>
+    <a href="https://developer.android.com/tv"><img src="https://img.shields.io/badge/Android_TV-6.0%2B-3DDC84?logo=android&amp;logoColor=white" alt="Android TV 6.0+"></a>
+    <a href="https://github.com/D4n13l3k00/yaos-a11y-manager/actions/workflows/android.yml"><img src="https://github.com/D4n13l3k00/yaos-a11y-manager/actions/workflows/android.yml/badge.svg" alt="Build"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL_v3-blue.svg" alt="AGPL v3"></a>
+  </p>
+  <img src="docs/github-banner.png" width="960" alt="YaOS A11y Manager">
+</div>
 
-[![Release](https://img.shields.io/github/v/release/D4n13l3k00/yaos-a11y-manager?display_name=tag)](https://github.com/D4n13l3k00/yaos-a11y-manager/releases/latest)
-[![Android](https://img.shields.io/badge/Android_TV-6.0%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/tv)
-[![Build](https://github.com/D4n13l3k00/yaos-a11y-manager/actions/workflows/android.yml/badge.svg)](https://github.com/D4n13l3k00/yaos-a11y-manager/actions/workflows/android.yml)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
-
-![YAOS Manager](app/src/main/res/drawable-xhdpi/app_banner.png)
-
-Системный менеджер для Android TV и телевизоров с YAOS. Он показывает полный
-список служб специальных возможностей, защищает выбранные службы от сброса,
-управляет установленными приложениями, принимает APK с телефона и открывает
-инженерное меню. Весь интерфейс рассчитан на обычный пульт.
-
-Основной guard работает через `WRITE_SECURE_SETTINGS` и не требует root. Если
-доступен root-adbd, Magisk/`su` или заводской CVTE `at_sudo`, приложение
-дополнительно запускает native-hook против watchdog YAOS. CVTE — один из
-бэкендов, а не обязательная часть приложения.
-
-Приложение написано на Kotlin без AndroidX, аналитики и рекламы.
+> [!NOTE]
+> Системный менеджер для Android TV и телевизоров с YaOS. Он показывает полный
+> список служб специальных возможностей, защищает выбранные службы от сброса,
+> управляет установленными приложениями, принимает APK с телефона и открывает
+> инженерное меню.
 
 ![Главный экран](docs/app-screen.png)
 
@@ -27,9 +23,9 @@
 > платформах после выдачи `WRITE_SECURE_SETTINGS`. Автоматическое включение ADB
 > и root-бэкенды зависят от прошивки.
 
-## Возможности
+## ✨ Возможности
 
-### Специальные возможности
+### ♿ Специальные возможности
 
 - показывает все установленные accessibility-службы и их фактическое состояние;
 - включает и отключает несколько служб без урезанного системного меню YAOS;
@@ -48,7 +44,7 @@
   не подтвердил;
 - позволяет временно отключить или повторно запустить защиту из интерфейса.
 
-### Менеджер приложений
+### 📦 Менеджер приложений
 
 - пользовательские, системные, замороженные и удалённые для профиля пакеты;
 - запуск, принудительная остановка, заморозка и разморозка;
@@ -62,20 +58,15 @@
 
 Системный APK при удалении для пользователя остаётся в прошивке. Его можно
 вернуть кнопкой восстановления. Полное удаление доступно только для
-пользовательских APK. Для потенциально критичных компонентов показывается
-дополнительное предупреждение.
+пользовательских APK.
 
-### Установка с телефона
+### 📲 Установка с телефона
 
 Отдельный TV-экран поднимает временный HTTP-сервер и показывает QR-код. После
 сканирования на телефоне открывается страница, куда можно загрузить APK или
-передать прямую ссылку. На телевизоре в это время видны журнал передачи,
-установка и ответ Package Manager.
+передать прямую ссылку.
 
-Адрес содержит случайный 128-битный токен. Сервер доступен только пока открыт
-экран установки; телефон и телевизор должны находиться в одной сети.
-
-### Системные инструменты
+### 🛠️ Системные инструменты
 
 - запуск штатного `Factory Menu`;
 - автоопределение известных Activity, action и CVTE service-команд;
@@ -85,7 +76,7 @@
 - живые статусы ADB, `WRITE_SECURE_SETTINGS`, выбранного root-бэкенда, guard и
   native-hook.
 
-## Совместимость
+## 📺 Совместимость
 
 Проверенная конфигурация:
 
@@ -100,8 +91,8 @@
 | Заводской root | Binder-сервис `cvte.at_sudo` |
 | Локальный ADB | `127.0.0.1:5555`, `ro.adb.secure=0` |
 
-CVTE не является обязательной частью архитектуры. Если локальный ADB уже
-включён, приложение сначала пытается выдать `WRITE_SECURE_SETTINGS` обычной
+Если локальный ADB уже включён, приложение сначала пытается выдать
+`WRITE_SECURE_SETTINGS` обычной
 командой `pm grant`. Для native-hook привилегированный бэкенд выбирается
 автоматически: уже запущенный root-adbd, Magisk/`su`, штатный `adb root`, затем
 CVTE `at_sudo`.
@@ -111,7 +102,7 @@ CVTE `at_sudo`.
 guard-режим настраивается автоматически. Если `WRITE_SECURE_SETTINGS` уже
 выдано, guard работает даже без доступного ADB и root.
 
-### Режимы доступа
+### 🔐 Режимы доступа
 
 | Доступ | Что работает |
 | --- | --- |
@@ -123,7 +114,7 @@ guard-режим настраивается автоматически. Если
 Native-hook рассчитан на `com.yandex.tv.services.platform`. На другой оболочке
 он не нужен: переносимая часть защиты — Android guard.
 
-## Установка
+## 🚀 Установка
 
 Скачайте APK со страницы
 [последнего релиза](https://github.com/D4n13l3k00/yaos-a11y-manager/releases/latest)
@@ -132,24 +123,15 @@ Native-hook рассчитан на `com.yandex.tv.services.platform`. На др
 
 ```powershell
 adb connect TV_IP:5555
-adb install -r .\YAOS-A11Y-Manager-v1.1.0.apk
+adb install -r .\YaOS-A11y-Manager-v1.2.0.apk
 ```
 
-Откройте **YAOS Manager** в списке приложений. Если ADB уже работает,
+Откройте **YaOS A11y Manager** в списке приложений. Если ADB уже работает,
 приложение выдаст системное разрешение обычным `pm grant`. На проверенной
 CVTE-прошивке оно также умеет включить локальный ADB и определить заводской
 root. Состояние каждого этапа видно в разделе «Об устройстве».
 
-## Управление с пульта
-
-- крестовина перемещает фокус, `OK` открывает выбранный пункт;
-- `Back` или кнопка «Назад» в правом верхнем углу возвращает на предыдущий экран;
-- `Вниз` с верхней панели менеджера приложений переводит к общей очистке кэша;
-- `Влево` из любой строки списка сразу переводит к действиям;
-- `Вправо` возвращает в ту же строку без прокрутки списка вверх;
-- длинные названия и имена пакетов прокручиваются, пока строка находится в фокусе.
-
-## Как работает автономный режим
+## ⚙️ Как работает автономный режим
 
 ```text
                  ┌─ уже выдано WRITE_SECURE_SETTINGS
@@ -164,7 +146,7 @@ root. Состояние каждого этапа видно в разделе 
                               └─► необязательный native-hook YAOS
 ```
 
-### Включение ADB
+### 🔌 Включение ADB
 
 Сначала приложение проверяет уже работающий ADB на `127.0.0.1:5555`. Если он
 недоступен, на CVTE-платформе используется экспортированный системный сервис
@@ -176,7 +158,7 @@ IFactoryApi.getFacApiNetWork()  -> transaction 8
 IFacApiNetWork.setAdbStatus(1)  -> transaction 37
 ```
 
-После ответа сервиса YAOS Manager подключается к `127.0.0.1:5555` через
+После ответа сервиса YaOS A11y Manager подключается к `127.0.0.1:5555` через
 встроенную библиотеку [dadb](https://github.com/mobile-dev-inc/dadb) и
 обязательно выполняет контрольную shell-команду. Открытого TCP-порта
 недостаточно: результат считается успешным только после ответа ADB shell.
@@ -187,7 +169,7 @@ IFacApiNetWork.setAdbStatus(1)  -> transaction 37
 увеличивающимися интервалами в течение 15 минут, затем переходит на редкие
 повторные попытки и сохраняет последнюю ошибку в уведомлении.
 
-### Привилегированные бэкенды
+### 🔑 Привилегированные бэкенды
 
 `PrivilegeManager` отделяет переносимый guard от механизмов конкретной
 прошивки. Автоматическое определение выполняется в таком порядке:
@@ -210,10 +192,7 @@ Binder-транзакцию `2`. Сначала приложение пытае�
 `android.permission.WRITE_SECURE_SETTINGS` без root обычным ADB shell. Root
 используется как fallback и для установки native-hook.
 
-Произвольной shell-консоли в приложении нет. Команды и пути зафиксированы в
-исходном коде.
-
-### Защита от watchdog YAOS
+### 🛡️ Защита от watchdog YAOS
 
 `com.yandex.tv.services.platform` следит за двумя настройками и возвращает
 разрешённый YAOS список служб:
@@ -241,44 +220,7 @@ guard наблюдает за `enabled_accessibility_services` и
 ложной ошибки. При загрузке системный доступ повторно проверяется с
 увеличивающимися интервалами до 15 минут.
 
-### Инженерное меню
-
-Экран «Инженерное меню» самостоятельно реализует способы для разных поколений
-плат и прошивок:
-
-```text
-Design Menu activity:
-  mediatek.tvsetting.factory.ui.designmenu.DesignMenuActivity
-
-MStar action:
-  mstar.tvsetting.factory.intent.action.MainmenuActivity
-
-MediaTek action:
-  mediatek.intent.action.MainmenuActivity
-
-Cultraview action:
-  com.cultraview.ctvfactorymenu.ui.FactoryMenuActivity
-
-CVTE SK706S service:
-  com.cvte.fac.menu/.app.TvMenuWindowManagerService
-  com.cvte.fac.menu.commmand.factory_menu
-```
-
-Для меню разработчика приложение ищет штатную
-`com.android.tv.settings.system.development.DevelopmentActivity`, затем
-стандартные Android actions. Кнопка «Автоопределение» последовательно проверяет
-все встроенные варианты и при необходимости использует сервисную комбинацию
-пульта через локальный ADB:
-
-```text
-Home → Source → Влево → Вверх → Влево → Вверх → Назад → Source
-```
-
-Сторонний APK-ярлык FactoryMenu не устанавливается и для работы не требуется.
-Последовательность описана в теме
-[BBK/YAOS на 4PDA](https://4pda.to/forum/index.php?showtopic=990351&st=220).
-
-## Сборка из исходников
+## 🧱 Сборка из исходников
 
 Понадобятся JDK 17 или 21 и Android SDK 35.
 
@@ -318,47 +260,6 @@ GitHub Actions собирает debug APK для каждого push/PR. Для 
 - [frida-inject 16.7.19](https://github.com/frida/frida/releases/tag/16.7.19) —
   точечный native-hook для Android ARM.
 
-## Структура проекта
+## 📜 Лицензия
 
-```text
-app/src/main/java/dev/d4n13l3k00/yaosa11y/
-  MainActivity.kt              главная страница
-  EngineeringActivity.kt       Factory Menu и меню разработчика
-  AccessibilityActivity.kt     менеджер служб
-  AppManagerActivity.kt        менеджер приложений
-  PackagePresetsActivity.kt    пакетные пресеты включения и отключения
-  WebInstallActivity.kt        установка по QR и ссылке
-  DeviceInfoActivity.kt        состояние устройства
-  PrivilegeManager.kt          выбор ADB/root-бэкендов и выдача разрешения
-  CvteAdbBootstrap.kt          запуск ADB через Factory API
-  RecoveryDialog.kt            ручное восстановление системного доступа
-  RootHookManager.kt           guard и необязательный native-hook
-  HookBootstrapService.kt      observer, сверка и восстановление после boot
-  AccessibilityPolicy.kt       чистая политика desired/observed state
-  AccessibilityProtectionStore.kt сохранение закреплённых служб
-  LocalApkServer.kt            временный HTTP-сервер
-
-app/src/main/assets/root/       встроенный root-payload
-tools/                          исходники и копии payload для пересборки
-```
-
-## Лицензия
-
-Copyright © 2026 **D4n13l3k00**.
-
-Проект распространяется по
-[GNU Affero General Public License v3.0 or later](LICENSE). Код можно
-использовать, изучать, изменять и распространять. При распространении
-оригинала или производной версии необходимо:
-
-- предоставить соответствующий исходный код;
-- сохранить ту же лицензию для производной работы;
-- сохранить уведомления о лицензии и авторских правах;
-- отметить внесённые изменения.
-
-Если изменённая версия взаимодействует с пользователями по сети, этим
-пользователям также должен быть доступен её полный исходный код.
-
-## Автор
-
-[D4n13l3k00](https://github.com/D4n13l3k00)
+[GNU Affero General Public License v3.0 or later](LICENSE).

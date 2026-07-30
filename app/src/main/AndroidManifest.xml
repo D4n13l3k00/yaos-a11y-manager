@@ -31,7 +31,7 @@
         android:theme="@style/AppTheme">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".feature.home.MainActivity"
             android:exported="true"
             android:launchMode="singleTask">
 
@@ -47,7 +47,7 @@
         </activity>
 
         <activity
-            android:name=".AccessibilityActivity"
+            android:name=".feature.accessibility.AccessibilityActivity"
             android:exported="true"
             android:launchMode="singleTask">
             <intent-filter android:priority="1000">
@@ -62,32 +62,32 @@
         </activity>
 
         <activity
-            android:name=".AppManagerActivity"
+            android:name=".feature.apps.AppManagerActivity"
             android:exported="false"
             android:launchMode="singleTask" />
 
         <activity
-            android:name=".PackagePresetsActivity"
+            android:name=".feature.apps.PackagePresetsActivity"
             android:exported="false"
             android:launchMode="singleTask" />
 
         <activity
-            android:name=".WebInstallActivity"
+            android:name=".feature.apps.WebInstallActivity"
             android:exported="false"
             android:launchMode="singleTask" />
 
         <activity
-            android:name=".DeviceInfoActivity"
+            android:name=".feature.device.DeviceInfoActivity"
             android:exported="false"
             android:launchMode="singleTask" />
 
         <activity
-            android:name=".EngineeringActivity"
+            android:name=".feature.device.EngineeringActivity"
             android:exported="false"
             android:launchMode="singleTask" />
 
         <service
-            android:name=".HookBootstrapService"
+            android:name=".feature.accessibility.AccessibilityGuardService"
             android:exported="false"
             android:foregroundServiceType="specialUse">
             <property
@@ -96,7 +96,7 @@
         </service>
 
         <receiver
-            android:name=".BootReceiver"
+            android:name=".system.BootReceiver"
             android:enabled="true"
             android:exported="true">
             <intent-filter>

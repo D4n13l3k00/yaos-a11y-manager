@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "YAOS Accessibility Manager"
+rootProject.name = "YaOS A11y Manager"
 include(":app")

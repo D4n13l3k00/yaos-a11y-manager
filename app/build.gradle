@@ -15,8 +15,8 @@ android {
         applicationId 'dev.d4n13l3k00.yaosa11y'
         minSdk 23
         targetSdk 35
-        versionCode 10100
-        versionName '1.1.0'
+        versionCode 10200
+        versionName '1.2.0'
     }
 
     signingConfigs {
@@ -54,4 +54,27 @@ dependencies {
     implementation 'org.tukaani:xz:1.12'
     implementation 'com.google.zxing:core:3.5.4'
     testImplementation 'junit:junit:4.13.2'
+}
+
+def packagedWatchdogHook = file('src/main/assets/root/watchdog-hook.js')
+def sourceWatchdogHook = rootProject.file('tools/watchdog-hook.js')
+
+tasks.register('verifyRootPayload') {
+    group = 'verification'
+    description = 'Checks that the packaged watchdog hook matches its editable source.'
+    inputs.files(packagedWatchdogHook, sourceWatchdogHook)
+    doLast {
+        if (!packagedWatchdogHook.exists() || !sourceWatchdogHook.exists()) {
+            throw new GradleException('watchdog-hook.js source or packaged asset is missing')
+        }
+        if (!Arrays.equals(packagedWatchdogHook.bytes, sourceWatchdogHook.bytes)) {
+            throw new GradleException(
+                'app/src/main/assets/root/watchdog-hook.js differs from tools/watchdog-hook.js'
+            )
+        }
+    }
+}
+
+tasks.named('preBuild').configure {
+    dependsOn tasks.named('verifyRootPayload')
 }

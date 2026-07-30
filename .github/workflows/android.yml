@@ -38,7 +38,7 @@ jobs:
       - name: Upload debug APK
         uses: actions/upload-artifact@v7
         with:
-          name: YAOS-A11Y-Manager-debug
+          name: YaOS-A11y-Manager-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
 
@@ -96,7 +96,7 @@ jobs:
         run: |
           version="$(sed -n "s/.*versionName '\([^']*\)'.*/\1/p" app/build.gradle)"
           test -n "$version"
-          release_name="YAOS-A11Y-Manager-v${version}"
+          release_name="YaOS-A11y-Manager-v${version}"
           release_apk="${release_name}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$release_apk"
           printf 'RELEASE_NAME=%s\n' "$release_name" >> "$GITHUB_ENV"

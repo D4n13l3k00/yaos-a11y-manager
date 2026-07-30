@@ -9,6 +9,7 @@ keystore.properties
 *.iml
 .idea/
 captures/
+outputs/
 *.apk
 signing-credentials.txt
 .venv/
