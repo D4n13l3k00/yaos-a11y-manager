@@ -25,6 +25,10 @@ import android.widget.TextView
 import android.widget.Toast
 import dev.d4n13l3k00.yaosa11y.R
 import dev.d4n13l3k00.yaosa11y.core.ui.ActivityTaskScope
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvActionStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenInsets
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenSubtitleStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenTitleStyle
 import dev.d4n13l3k00.yaosa11y.core.ui.dp
 import dev.d4n13l3k00.yaosa11y.core.ui.postIfAlive
 import dev.d4n13l3k00.yaosa11y.core.ui.redirectDpadLeftTo
@@ -77,7 +81,7 @@ class AppManagerActivity : Activity() {
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(56), dp(32), dp(56), dp(30))
+            applyTvScreenInsets()
         }
         val titleRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -85,20 +89,18 @@ class AppManagerActivity : Activity() {
         }
         titleRow.addView(TextView(this).apply {
             text = "Менеджер приложений"
-            setTextColor(Color.WHITE)
-            textSize = 28f
-            typeface = Typeface.DEFAULT_BOLD
-            setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_apps, 0, 0, 0)
-            compoundDrawablePadding = dp(14)
+            applyTvScreenTitleStyle(R.drawable.ic_apps)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        titleRow.addView(actionButton("Назад", R.drawable.ic_back) { finish() })
+        titleRow.addView(
+            actionButton("Назад", R.drawable.ic_back) { finish() }.apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = 0
+            },
+        )
         panel.addView(titleRow)
 
         statusView = TextView(this).apply {
             text = "Загрузка списка…"
-            setTextColor(Color.rgb(174, 185, 196))
-            textSize = 15f
-            setPadding(0, dp(4), 0, dp(12))
+            applyTvScreenSubtitleStyle()
         }
         panel.addView(statusView)
 
@@ -500,14 +502,7 @@ class AppManagerActivity : Activity() {
         Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            background = focusBackground()
-            setPadding(dp(18), 0, dp(18), 0)
-            if (iconRes != 0) {
-                setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
-                compoundDrawablePadding = dp(9)
-            }
+            applyTvActionStyle(iconRes, horizontalPaddingDp = 18, verticalPaddingDp = 0)
             setOnClickListener { action() }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,

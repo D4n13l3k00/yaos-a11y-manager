@@ -20,6 +20,9 @@ import android.widget.TextView
 import android.widget.Toast
 import dev.d4n13l3k00.yaosa11y.R
 import dev.d4n13l3k00.yaosa11y.core.ui.ActivityTaskScope
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvActionStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenInsets
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenTitleStyle
 import dev.d4n13l3k00.yaosa11y.core.ui.dp
 import dev.d4n13l3k00.yaosa11y.core.ui.postIfAlive
 import dev.d4n13l3k00.yaosa11y.core.ui.redirectDpadLeftTo
@@ -62,7 +65,7 @@ class PackagePresetsActivity : Activity() {
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(56), dp(30), dp(56), dp(28))
+            applyTvScreenInsets()
         }
 
         val header = LinearLayout(this).apply {
@@ -71,13 +74,13 @@ class PackagePresetsActivity : Activity() {
         }
         header.addView(TextView(this).apply {
             text = "Пресеты системных приложений"
-            textSize = 28f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
-            setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_shield_off, 0, 0, 0)
-            compoundDrawablePadding = dp(14)
+            applyTvScreenTitleStyle(R.drawable.ic_shield_off)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(actionButton("Назад", R.drawable.ic_back, track = false) { finish() })
+        header.addView(
+            actionButton("Назад", R.drawable.ic_back, track = false) { finish() }.apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = 0
+            },
+        )
         panel.addView(header)
 
         panel.addView(TextView(this).apply {
@@ -108,10 +111,10 @@ class PackagePresetsActivity : Activity() {
             entries.forEach { it.selected = false }
             renderEntries()
         }
-        disableButton = actionButton("Отключить выбранные", R.drawable.ic_shield_off) {
+        disableButton = actionButton("Отключить", R.drawable.ic_shield_off) {
             confirmDisable()
         }
-        enableButton = actionButton("Включить выбранные", R.drawable.ic_shield) {
+        enableButton = actionButton("Включить", R.drawable.ic_shield) {
             runSelected(enabled = true)
         }
         toolbar.addView(recommendedButton)
@@ -469,12 +472,7 @@ class PackagePresetsActivity : Activity() {
         Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            background = focusBackground()
-            setPadding(dp(18), 0, dp(18), 0)
-            setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
-            compoundDrawablePadding = dp(9)
+            applyTvActionStyle(iconRes, horizontalPaddingDp = 18, verticalPaddingDp = 0)
             setOnClickListener { action() }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,

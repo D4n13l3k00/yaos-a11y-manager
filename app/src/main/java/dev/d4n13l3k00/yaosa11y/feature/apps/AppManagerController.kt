@@ -32,7 +32,7 @@ class AppManagerController(context: Context) : Closeable {
     private val packageRepository = PackageRepository(appContext)
     private val packageOperator = PackageOperator(appContext, privilegeManager, gateway)
     private val apkDownloader = ApkDownloader(appContext)
-    private val apkInstaller = ApkInstaller(appContext, gateway)
+    private val apkInstaller = ApkInstaller(appContext, gateway, privilegeManager)
     private val executor = Executors.newSingleThreadExecutor()
     private val closed = AtomicBoolean(false)
 
@@ -66,8 +66,24 @@ class AppManagerController(context: Context) : Closeable {
     fun installApkBlocking(file: File): Result =
         asResult { apkInstaller.install(file) }
 
-    fun installUrlBlocking(url: String): Result =
-        asResult { apkInstaller.install(apkDownloader.download(url)) }
+    fun installUrlBlocking(
+        url: String,
+        status: (String) -> Unit = {},
+    ): Result = asResult {
+        var lastProgressBucket = -1
+        val apk = apkDownloader.download(url) { downloaded, total ->
+            if (total > 0) {
+                val percent = (downloaded * 100 / total).toInt().coerceIn(0, 100)
+                val bucket = percent / 5
+                if (bucket != lastProgressBucket) {
+                    lastProgressBucket = bucket
+                    status("Загрузка APK по ссылке: $percent%")
+                }
+            }
+        }
+        status("Проверка APK и выбор способа установки…")
+        apkInstaller.install(apk)
+    }
 
     private fun submit(callback: (Result) -> Unit, work: () -> String) {
         if (closed.get()) return

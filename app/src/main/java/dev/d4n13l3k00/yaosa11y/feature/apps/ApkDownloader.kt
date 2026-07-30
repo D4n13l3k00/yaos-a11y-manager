@@ -18,7 +18,14 @@ class ApkDownloader(context: Context) {
         "YaOS-A11y-Manager/$version"
     }
 
-    fun download(rawUrl: String): File {
+    fun download(rawUrl: String): File =
+        download(rawUrl, preferredName = null)
+
+    fun download(
+        rawUrl: String,
+        preferredName: String? = null,
+        progress: (downloadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
+    ): File {
         var current = URI(rawUrl.trim()).toURL()
         requireHttp(current)
         repeat(MAX_REDIRECTS + 1) { redirect ->
@@ -43,7 +50,9 @@ class ApkDownloader(context: Context) {
                 val length =
                     connection.getHeaderField("Content-Length")?.toLongOrNull() ?: -1L
                 check(length <= MAX_APK_BYTES) { "APK больше допустимого размера" }
-                val name = current.path.substringAfterLast('/').substringBefore('?')
+                val name = preferredName
+                    ?.takeIf { it.endsWith(".apk", ignoreCase = true) }
+                    ?: current.path.substringAfterLast('/').substringBefore('?')
                     .takeIf { it.endsWith(".apk", ignoreCase = true) }
                     ?: "download-${System.currentTimeMillis()}.apk"
                 val destination = File(appContext.cacheDir, safeFileName(name))
@@ -59,6 +68,7 @@ class ApkDownloader(context: Context) {
                                 "APK больше допустимого размера"
                             }
                             output.write(buffer, 0, count)
+                            progress(total, length)
                         }
                     }
                 }

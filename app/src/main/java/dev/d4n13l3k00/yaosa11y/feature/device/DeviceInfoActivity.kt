@@ -20,6 +20,9 @@ import dev.d4n13l3k00.yaosa11y.core.platform.PlatformProfileResolver
 import dev.d4n13l3k00.yaosa11y.core.privilege.PrivilegeManager
 import dev.d4n13l3k00.yaosa11y.core.ui.ActivityTaskScope
 import dev.d4n13l3k00.yaosa11y.core.ui.applyTvActionStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenInsets
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenSubtitleStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenTitleStyle
 import dev.d4n13l3k00.yaosa11y.core.ui.dp
 import dev.d4n13l3k00.yaosa11y.core.ui.roundedDrawable
 import dev.d4n13l3k00.yaosa11y.feature.accessibility.RootHookManager
@@ -76,7 +79,7 @@ class DeviceInfoActivity : Activity() {
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(72), dp(30), dp(72), dp(28))
+            applyTvScreenInsets()
         }
 
         val header = LinearLayout(this).apply {
@@ -85,9 +88,7 @@ class DeviceInfoActivity : Activity() {
         }
         header.addView(TextView(this).apply {
             text = "Об устройстве"
-            textSize = 32f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            applyTvScreenTitleStyle(R.drawable.ic_device)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(
             actionButton("Назад", R.drawable.ic_back) { finish() },
@@ -100,9 +101,7 @@ class DeviceInfoActivity : Activity() {
 
         panel.addView(TextView(this).apply {
             text = "Состояние системы, ADB и защиты спецвозможностей • обновляется автоматически"
-            textSize = 16f
-            setTextColor(Color.rgb(166, 179, 191))
-            setPadding(0, dp(4), 0, dp(16))
+            applyTvScreenSubtitleStyle()
         })
 
         val cards = LinearLayout(this).apply {

@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
@@ -22,7 +21,11 @@ import dev.d4n13l3k00.yaosa11y.core.platform.EngineeringEndpoint
 import dev.d4n13l3k00.yaosa11y.core.platform.PlatformProfileResolver
 import dev.d4n13l3k00.yaosa11y.core.privilege.PrivilegeManager
 import dev.d4n13l3k00.yaosa11y.core.ui.ActivityTaskScope
+import dev.d4n13l3k00.yaosa11y.core.ui.TvLayout
 import dev.d4n13l3k00.yaosa11y.core.ui.applyTvActionStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenInsets
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenSubtitleStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenTitleStyle
 import dev.d4n13l3k00.yaosa11y.core.ui.dp
 import dev.d4n13l3k00.yaosa11y.core.ui.roundedDrawable
 
@@ -48,7 +51,7 @@ class EngineeringActivity : Activity() {
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(72), dp(40), dp(72), dp(40))
+            applyTvScreenInsets()
         }
 
         val header = LinearLayout(this).apply {
@@ -57,18 +60,14 @@ class EngineeringActivity : Activity() {
         }
         header.addView(TextView(this).apply {
             text = "Инженерное меню"
-            textSize = 32f
-            setTextColor(Color.WHITE)
-            typeface = Typeface.DEFAULT_BOLD
+            applyTvScreenTitleStyle(R.drawable.ic_engineering)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(actionButton("Назад", R.drawable.ic_back) { finish() })
         panel.addView(header)
 
         panel.addView(TextView(this).apply {
             text = "Factory Menu для MStar, MediaTek, CV9632 и SK706S • меню разработчика для ADB"
-            textSize = 16f
-            setTextColor(Color.rgb(166, 179, 191))
-            setPadding(0, dp(6), 0, dp(18))
+            applyTvScreenSubtitleStyle()
         })
 
         statusView = TextView(this).apply {
@@ -77,7 +76,7 @@ class EngineeringActivity : Activity() {
             setTextColor(Color.rgb(129, 216, 161))
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(22), dp(13), dp(22), dp(13))
-            background = rounded(Color.rgb(28, 34, 43), 12)
+            background = rounded(Color.rgb(28, 34, 43), TvLayout.cardRadiusDp)
         }
         panel.addView(
             statusView,

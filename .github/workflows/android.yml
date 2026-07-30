@@ -99,14 +99,18 @@ jobs:
           release_name="YaOS-A11y-Manager-v${version}"
           release_apk="${release_name}.apk"
           cp app/build/outputs/apk/release/app-release.apk "$release_apk"
+          sha256sum "$release_apk" > "$release_apk.sha256"
           printf 'RELEASE_NAME=%s\n' "$release_name" >> "$GITHUB_ENV"
           printf 'RELEASE_APK=%s\n' "$release_apk" >> "$GITHUB_ENV"
+          printf 'RELEASE_SHA256=%s\n' "$release_apk.sha256" >> "$GITHUB_ENV"
 
       - name: Upload signed APK
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.RELEASE_NAME }}
-          path: ${{ env.RELEASE_APK }}
+          path: |
+            ${{ env.RELEASE_APK }}
+            ${{ env.RELEASE_SHA256 }}
           if-no-files-found: error
 
       - name: Publish tagged release
@@ -115,13 +119,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          awk -v version="$GITHUB_REF_NAME" '
+            $0 == "## " version { found=1; next }
+            found && /^## / { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          test -s release-notes.md
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" \
               "$RELEASE_APK" \
+              "$RELEASE_SHA256" \
               --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --notes-file release-notes.md \
+              --title "$GITHUB_REF_NAME"
           else
             gh release create "$GITHUB_REF_NAME" \
               "$RELEASE_APK" \
-              --generate-notes \
+              "$RELEASE_SHA256" \
+              --notes-file release-notes.md \
               --title "$GITHUB_REF_NAME"
           fi

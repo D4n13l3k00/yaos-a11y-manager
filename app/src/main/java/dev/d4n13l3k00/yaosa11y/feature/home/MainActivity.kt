@@ -1,11 +1,11 @@
 package dev.d4n13l3k00.yaosa11y.feature.home
 
+import android.animation.ValueAnimator
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.graphics.drawable.StateListDrawable
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -14,6 +14,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -22,6 +23,8 @@ import android.widget.Toast
 import dev.d4n13l3k00.yaosa11y.R
 import dev.d4n13l3k00.yaosa11y.core.privilege.PrivilegeManager
 import dev.d4n13l3k00.yaosa11y.core.ui.ActivityTaskScope
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenInsets
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenTitleStyle
 import dev.d4n13l3k00.yaosa11y.core.ui.dp
 import dev.d4n13l3k00.yaosa11y.core.ui.postIfAlive
 import dev.d4n13l3k00.yaosa11y.core.ui.roundedDrawable
@@ -33,6 +36,10 @@ import dev.d4n13l3k00.yaosa11y.feature.apps.WebInstallActivity
 import dev.d4n13l3k00.yaosa11y.feature.device.DeviceInfoActivity
 import dev.d4n13l3k00.yaosa11y.feature.device.EngineeringActivity
 import dev.d4n13l3k00.yaosa11y.feature.recovery.RecoveryDialog
+import dev.d4n13l3k00.yaosa11y.feature.update.GitHubUpdateClient
+import dev.d4n13l3k00.yaosa11y.feature.update.UpdateActivity
+import dev.d4n13l3k00.yaosa11y.feature.update.UpdateStateStore
+import dev.d4n13l3k00.yaosa11y.feature.update.VersionPolicy
 import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.util.Collections
@@ -41,13 +48,18 @@ class MainActivity : Activity() {
     private val tasks = ActivityTaskScope(this)
     private lateinit var protectionStatus: TextView
     private lateinit var deviceStatus: TextView
+    private lateinit var versionStatus: TextView
+    private lateinit var updateNotice: TextView
     private lateinit var rootHookManager: RootHookManager
+    private lateinit var updateStateStore: UpdateStateStore
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         rootHookManager = RootHookManager(this)
+        updateStateStore = UpdateStateStore(this)
         setContentView(createContent())
+        refreshUpdateStatus()
         if (!rootHookManager.hasStoredChoice()) {
             enableProtectionWithRecovery()
         } else if (rootHookManager.shouldBeEnabled()) {
@@ -80,25 +92,40 @@ class MainActivity : Activity() {
     private fun createContent(): View {
         val root = FrameLayout(this).apply {
             setBackgroundColor(Color.rgb(16, 19, 23))
+            clipChildren = false
+            clipToPadding = false
         }
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(72), dp(38), dp(72), dp(36))
+            applyTvScreenInsets()
+            clipChildren = false
+            clipToPadding = false
         }
         panel.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.BOTTOM
             addView(TextView(this@MainActivity).apply {
                 text = getString(R.string.app_name)
-                setTextColor(Color.WHITE)
-                textSize = 31f
-                typeface = Typeface.DEFAULT_BOLD
+                applyTvScreenTitleStyle()
             })
-            addView(TextView(this@MainActivity).apply {
+            versionStatus = TextView(this@MainActivity).apply {
                 text = "v${installedVersionName()}"
                 setTextColor(Color.rgb(126, 140, 154))
-                textSize = 11f
-                setPadding(dp(10), 0, 0, dp(4))
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setPadding(dp(9), dp(3), dp(9), dp(3))
+                background = tvFocusBackground(7)
+                isFocusable = true
+                isClickable = true
+                contentDescription = "Проверить обновления приложения"
+                setOnClickListener { openUpdateScreen() }
+            }
+            addView(versionStatus, LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                marginStart = dp(10)
+                bottomMargin = dp(1)
             })
         })
         panel.addView(TextView(this).apply {
@@ -134,17 +161,44 @@ class MainActivity : Activity() {
         )
         panel.addView(summary)
 
+        updateNotice = TextView(this).apply {
+            visibility = View.GONE
+            textSize = 14f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(9), dp(18), dp(9))
+            background = tvFocusBackground(10)
+            setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_update, 0, 0, 0)
+            compoundDrawablePadding = dp(10)
+            isFocusable = true
+            isClickable = true
+            setOnClickListener { openUpdateScreen() }
+        }
+        panel.addView(
+            updateNotice,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply {
+                bottomMargin = dp(12)
+            },
+        )
+
         val firstRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
+            clipChildren = false
+            clipToPadding = false
         }
-        firstRow.addView(
-            sectionCard(
+        val applicationsCard = sectionCard(
                 title = "Приложения",
                 subtitle = "Заморозка, удаление, кэш, данные и системные пресеты",
                 accent = Color.rgb(94, 184, 255),
                 iconRes = R.drawable.ic_apps,
-            ) { startActivity(Intent(this, AppManagerActivity::class.java)) },
+            ) { startActivity(Intent(this, AppManagerActivity::class.java)) }
+        firstRow.addView(
+            applicationsCard,
             cardParams(),
         )
         firstRow.addView(
@@ -178,6 +232,8 @@ class MainActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
             setPadding(0, dp(16), 0, 0)
+            clipChildren = false
+            clipToPadding = false
         }
         secondRow.addView(
             sectionCard(
@@ -224,6 +280,7 @@ class MainActivity : Activity() {
                 ViewGroup.LayoutParams.MATCH_PARENT,
             ),
         )
+        applicationsCard.post { applicationsCard.requestFocus() }
         return root
     }
 
@@ -248,10 +305,9 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.TOP
             setPadding(dp(26), dp(22), dp(26), dp(22))
-            background = cardBackground()
             isFocusable = true
             isClickable = true
-            setOnFocusChangeListener { _, hasFocus -> titleView.isSelected = hasFocus }
+            installAnimatedCardFocus(accent, titleView)
             setOnClickListener { action() }
             addView(View(this@MainActivity).apply {
                 background = rounded(accent, 2)
@@ -283,6 +339,60 @@ class MainActivity : Activity() {
         LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply {
             marginEnd = dp(14)
         }
+
+    private fun View.installAnimatedCardFocus(accent: Int, titleView: TextView) {
+        val cardDrawable = roundedDrawable(Color.rgb(28, 34, 43), 16).apply {
+            setStroke(dp(2), Color.TRANSPARENT)
+        }
+        background = cardDrawable
+        var focusFraction = 0f
+        var focusAnimator: ValueAnimator? = null
+        setOnFocusChangeListener { _, hasFocus ->
+            titleView.isSelected = hasFocus
+            focusAnimator?.cancel()
+            val target = if (hasFocus) 1f else 0f
+            focusAnimator = ValueAnimator.ofFloat(focusFraction, target).apply {
+                duration = 210
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener {
+                    focusFraction = it.animatedValue as Float
+                    cardDrawable.setColor(
+                        blendColor(
+                            Color.rgb(28, 34, 43),
+                            accent,
+                            focusFraction * 0.16f,
+                        ),
+                    )
+                    cardDrawable.setStroke(
+                        dp(2),
+                        Color.argb(
+                            (220 * focusFraction).toInt(),
+                            Color.red(accent),
+                            Color.green(accent),
+                            Color.blue(accent),
+                        ),
+                    )
+                    translationZ = dp(7) * focusFraction
+                }
+                start()
+            }
+            animate()
+                .scaleX(if (hasFocus) 1.02f else 1f)
+                .scaleY(if (hasFocus) 1.02f else 1f)
+                .setDuration(210)
+                .setInterpolator(AccelerateDecelerateInterpolator())
+                .start()
+        }
+    }
+
+    private fun blendColor(from: Int, to: Int, fraction: Float): Int {
+        val amount = fraction.coerceIn(0f, 1f)
+        return Color.rgb(
+            (Color.red(from) + (Color.red(to) - Color.red(from)) * amount).toInt(),
+            (Color.green(from) + (Color.green(to) - Color.green(from)) * amount).toInt(),
+            (Color.blue(from) + (Color.blue(to) - Color.blue(from)) * amount).toInt(),
+        )
+    }
 
     private fun refreshStatus() {
         rootHookManager.queryStateAsync { state ->
@@ -328,6 +438,60 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun refreshUpdateStatus() {
+        val installed = installedVersionName()
+        updateStateStore.consumeCompletedVersion()?.let { version ->
+            showUpdateNotice(
+                text = "Обновлено до v$version",
+                color = Color.rgb(129, 216, 161),
+            )
+        }
+        updateStateStore.cachedLatestVersion()
+            ?.takeIf { VersionPolicy.isNewer(it, installed) }
+            ?.let(::showAvailableUpdate)
+        if (!updateStateStore.shouldRefresh()) return
+
+        tasks.execute {
+            runCatching { GitHubUpdateClient(this).latestRelease() }
+                .onSuccess { latest ->
+                    updateStateStore.recordCheck(latest.versionName)
+                    if (VersionPolicy.isNewer(latest.versionName, installed)) {
+                        tasks.post { showAvailableUpdate(latest.versionName) }
+                    }
+                }
+        }
+    }
+
+    private fun showAvailableUpdate(version: String) {
+        versionStatus.text = "↓ v$version"
+        versionStatus.setTextColor(Color.rgb(129, 216, 161))
+        if (updateStateStore.shouldShowAvailableNotice(version)) {
+            showUpdateNotice(
+                text = "Доступно обновление v$version  •  открыть OTA",
+                color = Color.rgb(94, 184, 255),
+            )
+        }
+    }
+
+    private fun showUpdateNotice(text: String, color: Int) {
+        updateNotice.text = text
+        updateNotice.setTextColor(color)
+        updateNotice.alpha = 0f
+        updateNotice.translationY = -dp(8).toFloat()
+        updateNotice.visibility = View.VISIBLE
+        updateNotice.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(220)
+            .start()
+    }
+
+    private fun openUpdateScreen() {
+        updateStateStore.cachedLatestVersion()?.let(updateStateStore::acknowledgeAvailableNotice)
+        updateNotice.visibility = View.GONE
+        startActivity(Intent(this, UpdateActivity::class.java))
+    }
+
     private fun enableProtectionWithRecovery() {
         rootHookManager.runAsync(true) { result ->
             refreshStatus()
@@ -348,9 +512,6 @@ class MainActivity : Activity() {
                 .firstOrNull { it.isSiteLocalAddress }
                 ?.hostAddress
         }.getOrNull() ?: "IP недоступен"
-
-    private fun cardBackground(): StateListDrawable =
-        tvFocusBackground(16)
 
     private fun rounded(color: Int, radiusDp: Int): GradientDrawable =
         roundedDrawable(color, radiusDp)

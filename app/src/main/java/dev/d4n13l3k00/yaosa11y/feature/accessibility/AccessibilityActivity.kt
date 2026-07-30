@@ -26,6 +26,11 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import dev.d4n13l3k00.yaosa11y.R
+import dev.d4n13l3k00.yaosa11y.core.ui.TvLayout
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvActionStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenInsets
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenSubtitleStyle
+import dev.d4n13l3k00.yaosa11y.core.ui.applyTvScreenTitleStyle
 import dev.d4n13l3k00.yaosa11y.core.ui.dp
 import dev.d4n13l3k00.yaosa11y.core.ui.postIfAlive
 import dev.d4n13l3k00.yaosa11y.core.ui.redirectDpadLeftTo
@@ -41,8 +46,7 @@ class AccessibilityActivity : Activity() {
     private lateinit var hookStatusView: TextView
     private lateinit var serviceList: LinearLayout
     private lateinit var refreshButton: Button
-    private lateinit var enableProtectionButton: Button
-    private lateinit var disableProtectionButton: Button
+    private lateinit var protectionToggleButton: Button
     private val operationButtons = ArrayList<Button>()
     private val serviceRows = LinkedHashMap<ComponentName, ServiceRowViews>()
     private var pendingInitialServiceFocus = true
@@ -103,7 +107,7 @@ class AccessibilityActivity : Activity() {
 
         val panel = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(72), dp(42), dp(72), dp(36))
+            applyTvScreenInsets()
         }
 
         val titleRow = LinearLayout(this).apply {
@@ -112,70 +116,63 @@ class AccessibilityActivity : Activity() {
         }
         titleRow.addView(TextView(this).apply {
             text = "Спецвозможности"
-            setTextColor(Color.WHITE)
-            textSize = 30f
-            typeface = Typeface.DEFAULT_BOLD
-            setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_accessibility, 0, 0, 0)
-            compoundDrawablePadding = dp(14)
+            applyTvScreenTitleStyle(R.drawable.ic_accessibility)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        titleRow.addView(actionButton("Назад", R.drawable.ic_back) { finish() })
+        titleRow.addView(
+            actionButton("Назад", R.drawable.ic_back, track = false) { finish() }.apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = 0
+            },
+        )
         panel.addView(titleRow)
 
-        panel.addView(TextView(this).apply {
-            text = getString(R.string.author_line)
-            setTextColor(Color.rgb(94, 184, 255))
-            textSize = 15f
-            setPadding(0, dp(4), 0, 0)
-        })
-
         statusView = TextView(this).apply {
-            setTextColor(Color.rgb(174, 185, 196))
-            textSize = 16f
-            setPadding(0, dp(8), 0, dp(18))
+            applyTvScreenSubtitleStyle()
         }
         panel.addView(statusView)
 
+        val protectionPanel = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = rounded(Color.rgb(28, 34, 43), TvLayout.cardRadiusDp)
+            setPadding(dp(18), dp(10), dp(8), dp(10))
+        }
         hookStatusView = TextView(this).apply {
             text = "Защита YAOS: проверка…"
             setTextColor(Color.rgb(255, 183, 77))
             textSize = 15f
-            setPadding(0, 0, 0, dp(12))
             setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_shield, 0, 0, 0)
             compoundDrawablePadding = dp(10)
         }
-        panel.addView(hookStatusView)
-
-        val toolbar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.START
-        }
+        protectionPanel.addView(
+            hookStatusView,
+            LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginEnd = dp(12)
+            },
+        )
         refreshButton = actionButton("Обновить", R.drawable.ic_refresh) {
             renderServices()
             refreshHookStatus()
         }.apply { id = View.generateViewId() }
-        enableProtectionButton =
-            actionButton("Включить защиту", R.drawable.ic_shield) {
-                changeHookState(true)
-            }.apply { id = View.generateViewId() }
-        disableProtectionButton =
-            actionButton("Отключить защиту", R.drawable.ic_shield_off) {
-                changeHookState(false)
-            }.apply { id = View.generateViewId() }
-        toolbar.addView(refreshButton)
-        toolbar.addView(enableProtectionButton)
-        toolbar.addView(disableProtectionButton)
-        panel.addView(toolbar)
+        protectionToggleButton = actionButton(
+            if (rootHookManager.shouldBeEnabled()) "Отключить защиту" else "Включить защиту",
+            if (rootHookManager.shouldBeEnabled()) R.drawable.ic_shield_off else R.drawable.ic_shield,
+        ) {
+            changeHookState(!rootHookManager.shouldBeEnabled())
+        }.apply { id = View.generateViewId() }
+        protectionPanel.addView(refreshButton)
+        protectionPanel.addView(protectionToggleButton)
+        panel.addView(protectionPanel)
 
         panel.addView(TextView(this).apply {
-            text = "OK — включить или выключить службу  •  ←/→ — служба и её защита"
+            text = "OK — состояние службы  •  ←/→ — служба и её защита"
             setTextColor(Color.rgb(153, 166, 179))
             textSize = 13f
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(8), 0, dp(6))
         })
 
         val scroll = ScrollView(this).apply {
             isFillViewport = true
-            setPadding(0, dp(12), 0, 0)
+            setPadding(0, dp(4), 0, 0)
         }
         serviceList = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -253,7 +250,7 @@ class AccessibilityActivity : Activity() {
             id = View.generateViewId()
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(24), dp(15), dp(24), dp(15))
+            setPadding(dp(20), dp(12), dp(20), dp(12))
             background = focusBackground()
             isFocusable = true
             isClickable = true
@@ -274,8 +271,8 @@ class AccessibilityActivity : Activity() {
         row.addView(ImageView(this).apply {
             setImageDrawable(entry.resolveInfo.loadIcon(packageManager))
             scaleType = ImageView.ScaleType.FIT_CENTER
-        }, LinearLayout.LayoutParams(dp(54), dp(54)).apply {
-            marginEnd = dp(20)
+        }, LinearLayout.LayoutParams(dp(46), dp(46)).apply {
+            marginEnd = dp(16)
         })
 
         val labels = LinearLayout(this).apply {
@@ -284,7 +281,7 @@ class AccessibilityActivity : Activity() {
         val titleView = TextView(this).apply {
             text = entry.label
             setTextColor(Color.WHITE)
-            textSize = 20f
+            textSize = 18f
             typeface = Typeface.DEFAULT_BOLD
             setSingleLine(true)
             ellipsize = TextUtils.TruncateAt.MARQUEE
@@ -314,7 +311,7 @@ class AccessibilityActivity : Activity() {
             typeface = Typeface.DEFAULT_BOLD
             gravity = Gravity.CENTER
             background = pillBackground(entry.enabled)
-            setPadding(dp(18), dp(8), dp(18), dp(8))
+            setPadding(dp(14), dp(7), dp(14), dp(7))
         })
 
         val protectionButton = Button(this).apply {
@@ -332,7 +329,7 @@ class AccessibilityActivity : Activity() {
                 confirmProtection(entry, protected)
             }
         }
-        row.addView(protectionButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)).apply {
+        row.addView(protectionButton, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(46)).apply {
             marginStart = dp(12)
         })
 
@@ -353,7 +350,7 @@ class AccessibilityActivity : Activity() {
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT,
         ).apply {
-            bottomMargin = dp(10)
+            bottomMargin = dp(8)
         }
         return ServiceRowViews(
             row = row,
@@ -365,21 +362,21 @@ class AccessibilityActivity : Activity() {
         val first = rows.firstOrNull()
         if (first == null) {
             refreshButton.nextFocusDownId = refreshButton.id
-            enableProtectionButton.nextFocusDownId = enableProtectionButton.id
-            disableProtectionButton.nextFocusDownId = disableProtectionButton.id
+            protectionToggleButton.nextFocusDownId = protectionToggleButton.id
             return
         }
 
+        refreshButton.nextFocusRightId = protectionToggleButton.id
+        protectionToggleButton.nextFocusLeftId = refreshButton.id
         refreshButton.nextFocusDownId = first.row.id
-        enableProtectionButton.nextFocusDownId = first.protectionButton.id
-        disableProtectionButton.nextFocusDownId = first.protectionButton.id
+        protectionToggleButton.nextFocusDownId = first.protectionButton.id
 
         rows.forEachIndexed { index, current ->
             val previous = rows.getOrNull(index - 1)
             val next = rows.getOrNull(index + 1)
             current.row.nextFocusUpId = previous?.row?.id ?: refreshButton.id
             current.protectionButton.nextFocusUpId =
-                previous?.protectionButton?.id ?: enableProtectionButton.id
+                previous?.protectionButton?.id ?: protectionToggleButton.id
             current.row.nextFocusDownId = next?.row?.id ?: current.row.id
             current.protectionButton.nextFocusDownId =
                 next?.protectionButton?.id ?: current.protectionButton.id
@@ -524,8 +521,21 @@ class AccessibilityActivity : Activity() {
                         else -> Color.rgb(255, 183, 77)
                     },
                 )
+                updateProtectionToggle()
             }
         }
+    }
+
+    private fun updateProtectionToggle() {
+        val enabled = rootHookManager.shouldBeEnabled()
+        protectionToggleButton.text =
+            if (enabled) "Отключить защиту" else "Включить защиту"
+        protectionToggleButton.setCompoundDrawablesWithIntrinsicBounds(
+            if (enabled) R.drawable.ic_shield_off else R.drawable.ic_shield,
+            0,
+            0,
+            0,
+        )
     }
 
     private fun setOperationBusy(busy: Boolean) {
@@ -535,18 +545,16 @@ class AccessibilityActivity : Activity() {
         }
     }
 
-    private fun actionButton(label: String, iconRes: Int = 0, action: () -> Unit): Button =
+    private fun actionButton(
+        label: String,
+        iconRes: Int = 0,
+        track: Boolean = true,
+        action: () -> Unit,
+    ): Button =
         Button(this).apply {
             text = label
             isAllCaps = false
-            textSize = 15f
-            setTextColor(Color.WHITE)
-            background = focusBackground()
-            setPadding(dp(22), 0, dp(22), 0)
-            if (iconRes != 0) {
-                setCompoundDrawablesWithIntrinsicBounds(iconRes, 0, 0, 0)
-                compoundDrawablePadding = dp(9)
-            }
+            applyTvActionStyle(iconRes, horizontalPaddingDp = 18, verticalPaddingDp = 0)
             setOnClickListener { action() }
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -554,7 +562,7 @@ class AccessibilityActivity : Activity() {
             ).apply {
                 marginEnd = dp(12)
             }
-            operationButtons.add(this)
+            if (track) operationButtons.add(this)
         }
 
     private fun focusBackground(): StateListDrawable =

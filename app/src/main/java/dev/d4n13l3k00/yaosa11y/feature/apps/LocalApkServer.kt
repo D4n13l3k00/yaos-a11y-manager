@@ -22,7 +22,7 @@ class LocalApkServer(
     private val onStatus: (String) -> Unit,
 ) : AutoCloseable {
     private val running = AtomicBoolean(false)
-    private val token = ByteArray(16).also(SecureRandom()::nextBytes)
+    private val token = ByteArray(3).also(SecureRandom()::nextBytes)
         .joinToString("") { "%02x".format(it) }
     private var socket: ServerSocket? = null
     private var serverThread: Thread? = null
@@ -120,10 +120,18 @@ class LocalApkServer(
             .let { if (it.endsWith(".apk", true)) it else "$it.apk" }
         val destination = File(context.cacheDir, "web-${System.currentTimeMillis()}-$fileName")
         onStatus("Получение $fileName с телефона…")
+        var lastProgressBucket = -1
         FileOutputStream(destination).use { target ->
-            copyExactly(input, target, contentLength)
+            copyExactly(input, target, contentLength) { copied ->
+                val percent = (copied * 100 / contentLength).toInt().coerceIn(0, 100)
+                val bucket = percent / 5
+                if (bucket != lastProgressBucket) {
+                    lastProgressBucket = bucket
+                    onStatus("Получение $fileName: $percent%")
+                }
+            }
         }
-        onStatus("Установка $fileName…")
+        onStatus("Проверка APK и выбор способа установки…")
         val result = controller.installApkBlocking(destination)
         onStatus(result.message)
         respond(output, if (result.success) 200 else 500, result.message)
@@ -147,7 +155,7 @@ class LocalApkServer(
         readExactly(input, body)
         val apkUrl = body.toString(Charsets.UTF_8).trim()
         onStatus("Загрузка APK по ссылке с телефона…")
-        val result = controller.installUrlBlocking(apkUrl)
+        val result = controller.installUrlBlocking(apkUrl, onStatus)
         onStatus(result.message)
         respond(output, if (result.success) 200 else 500, result.message)
     }
@@ -250,14 +258,18 @@ class LocalApkServer(
         input: BufferedInputStream,
         output: FileOutputStream,
         length: Long,
+        progress: (Long) -> Unit,
     ) {
         val buffer = ByteArray(64 * 1024)
         var remaining = length
+        var copied = 0L
         while (remaining > 0) {
             val count = input.read(buffer, 0, minOf(buffer.size.toLong(), remaining).toInt())
             check(count > 0) { "Соединение оборвалось во время загрузки" }
             output.write(buffer, 0, count)
             remaining -= count
+            copied += count
+            progress(copied)
         }
     }
 
