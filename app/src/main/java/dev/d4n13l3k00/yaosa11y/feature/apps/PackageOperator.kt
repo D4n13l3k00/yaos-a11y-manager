@@ -17,8 +17,8 @@ class PackageOperator(
         app: ManagedApp?,
     ): String {
         if (operation == AppManagerController.Operation.TRIM_ALL_CACHES) {
-            return gateway.withConnection { adb ->
-                gateway.shell(adb, "pm trim-caches 999G")
+            return withPackageShell { shell ->
+                shell("pm trim-caches 999G")
                     .ifBlank { "Кэш всех приложений очищен" }
                     .trim()
             }
@@ -34,22 +34,22 @@ class PackageOperator(
             return operation.successMessage(target.label)
         }
 
-        return gateway.withConnection { adb ->
+        return withPackageShell { shell ->
             val output = when (operation) {
                 AppManagerController.Operation.FREEZE ->
-                    gateway.shell(adb, "pm disable-user --user 0 $packageName")
+                    shell("pm disable-user --user 0 $packageName")
                 AppManagerController.Operation.UNFREEZE ->
-                    gateway.shell(adb, "pm enable --user 0 $packageName")
+                    shell("pm enable --user 0 $packageName")
                 AppManagerController.Operation.UNINSTALL_FOR_USER ->
-                    gateway.shell(adb, "pm uninstall --user 0 $packageName")
+                    shell("pm uninstall --user 0 $packageName")
                 AppManagerController.Operation.RESTORE_FOR_USER ->
-                    gateway.shell(adb, "cmd package install-existing --user 0 $packageName")
+                    shell("cmd package install-existing --user 0 $packageName")
                 AppManagerController.Operation.UNINSTALL_COMPLETELY ->
-                    gateway.shell(adb, "pm uninstall $packageName")
+                    shell("pm uninstall $packageName")
                 AppManagerController.Operation.CLEAR_DATA ->
-                    gateway.shell(adb, "pm clear --user 0 $packageName")
+                    shell("pm clear --user 0 $packageName")
                 AppManagerController.Operation.FORCE_STOP ->
-                    gateway.shell(adb, "am force-stop --user 0 $packageName")
+                    shell("am force-stop --user 0 $packageName")
                 AppManagerController.Operation.CLEAR_CACHE,
                 AppManagerController.Operation.TRIM_ALL_CACHES,
                 -> error("Недостижимая операция")
@@ -66,7 +66,7 @@ class PackageOperator(
             "Защищённый системный пакет нельзя изменить через пресет"
         }
 
-        return gateway.withConnection { adb ->
+        return withPackageShell { shell ->
             val lines = ArrayList<String>()
             var successful = 0
             targets.forEach { packageName ->
@@ -76,7 +76,7 @@ class PackageOperator(
                     "pm disable-user --user 0 $packageName"
                 }
                 val attempt = runCatching {
-                    val output = gateway.shell(adb, command)
+                    val output = shell(command)
                     PackageCommandPolicy.requireSuccess(
                         if (enabled) {
                             AppManagerController.Operation.UNFREEZE
@@ -123,12 +123,24 @@ class PackageOperator(
                 "if [ -d \"\$d\" ]; then " +
                 "find \"\$d\" -mindepth 1 -maxdepth 1 -exec rm -rf {} +; fi; " +
                 "done; echo CACHE_OK"
-        gateway.withConnection { adb ->
-            val output = privilegeManager.shellAsRoot(adb, root.rootBackend, command)
-            check("CACHE_OK" in output) {
-                "${root.rootBackend.displayName} не подтвердил очистку кэша: ${output.trim()}"
+        val output = privilegeManager.shellAsRoot(root.rootBackend, command)
+        check("CACHE_OK" in output) {
+            "${root.rootBackend.displayName} не подтвердил очистку кэша: ${output.trim()}"
+        }
+    }
+
+    private fun <T> withPackageShell(block: ((String) -> String) -> T): T {
+        if (gateway.probe().available) {
+            return gateway.withConnection { adb ->
+                block { command -> gateway.shell(adb, command) }
             }
         }
+
+        val root = privilegeManager.ensureRootBackend(allowAdbRestart = false)
+        check(root.success && root.rootBackend != null) {
+            "Для операции нужен ADB или root: ${root.message}"
+        }
+        return block { command -> privilegeManager.shellAsRoot(root.rootBackend, command) }
     }
 
     private fun AppManagerController.Operation.successMessage(label: String): String =

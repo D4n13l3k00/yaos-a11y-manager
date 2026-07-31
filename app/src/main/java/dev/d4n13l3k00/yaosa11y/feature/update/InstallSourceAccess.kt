@@ -27,16 +27,16 @@ class InstallSourceAccess(context: Context) {
         val gateway = AdbGateway()
         val privilege = PrivilegeManager(appContext, gateway)
         val adb = privilege.ensureAdb()
-        if (!adb.success) {
-            return Result(false, "Нужно разрешение Android на установку из этого источника")
-        }
-
         val packageName = ShellPolicy.requirePackageName(appContext.packageName)
         val command = "cmd appops set $packageName REQUEST_INSTALL_PACKAGES allow"
-        val ordinary = runCatching {
-            privilege.withAdb { connection -> gateway.shell(connection, command) }
-            waitUntilAllowed()
-        }.getOrDefault(false)
+        val ordinary = if (adb.success) {
+            runCatching {
+                privilege.withAdb { connection -> gateway.shell(connection, command) }
+                waitUntilAllowed()
+            }.getOrDefault(false)
+        } else {
+            false
+        }
         if (ordinary) {
             return Result(true, "Разрешение на установку выдано через ADB shell")
         }
@@ -44,9 +44,7 @@ class InstallSourceAccess(context: Context) {
         val root = privilege.ensureRootBackend(allowAdbRestart = false)
         val rootGranted = if (root.success && root.rootBackend != null) {
             runCatching {
-                privilege.withAdb { connection ->
-                    privilege.shellAsRoot(connection, root.rootBackend, command)
-                }
+                privilege.shellAsRoot(root.rootBackend, command)
                 waitUntilAllowed()
             }.getOrDefault(false)
         } else {

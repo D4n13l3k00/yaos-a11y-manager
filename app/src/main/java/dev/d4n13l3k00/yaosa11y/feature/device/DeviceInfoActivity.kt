@@ -15,6 +15,7 @@ import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import dev.d4n13l3k00.yaosa11y.R
 import dev.d4n13l3k00.yaosa11y.core.platform.PlatformProfileResolver
 import dev.d4n13l3k00.yaosa11y.core.privilege.PrivilegeManager
@@ -91,6 +92,13 @@ class DeviceInfoActivity : Activity() {
             applyTvScreenTitleStyle(R.drawable.ic_device)
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         header.addView(
+            actionButton("Проверить root", R.drawable.ic_shield) { checkRoot() },
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+            ).apply { marginStart = dp(14) },
+        )
+        header.addView(
             actionButton("Назад", R.drawable.ic_back) { finish() },
             LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -163,6 +171,17 @@ class DeviceInfoActivity : Activity() {
             ),
         )
         return root
+    }
+
+    private fun checkRoot() {
+        Toast.makeText(this, "Проверяю root…", Toast.LENGTH_SHORT).show()
+        tasks.execute {
+            val result = privilegeManager.ensureRootBackend(allowAdbRestart = false)
+            tasks.post {
+                Toast.makeText(this, result.message, Toast.LENGTH_LONG).show()
+                refresh()
+            }
+        }
     }
 
     private fun refresh() {

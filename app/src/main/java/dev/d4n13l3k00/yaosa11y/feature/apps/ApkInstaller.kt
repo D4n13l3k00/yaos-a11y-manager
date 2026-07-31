@@ -6,7 +6,9 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
 import dev.d4n13l3k00.yaosa11y.core.adb.AdbGateway
+import dev.d4n13l3k00.yaosa11y.core.adb.ShellPolicy
 import dev.d4n13l3k00.yaosa11y.core.privilege.PrivilegeManager
+import dev.d4n13l3k00.yaosa11y.core.privilege.RootBackend
 import java.io.File
 
 class ApkInstaller(
@@ -55,8 +57,22 @@ class ApkInstaller(
         check(root.success && root.rootBackend != null) {
             "${ordinaryAdb.exceptionOrNull()?.message}; ${adbReady.message}; ${root.message}"
         }
-        installThroughAdb(file, root = root.rootBackend)
-        return "APK установлен без подтверждения через ${root.rootBackend.displayName}"
+        val backend = requireNotNull(root.rootBackend)
+        if (backend.requiresAdb) {
+            installThroughAdb(file, root = backend)
+        } else {
+            installThroughDirectRoot(file, backend)
+        }
+        return "APK установлен без подтверждения через ${backend.displayName}"
+    }
+
+    private fun installThroughDirectRoot(file: File, backend: RootBackend) {
+        val path = ShellPolicy.quote(file.absolutePath)
+        val output = privilegeManager.shellAsRoot(
+            backend,
+            "pm install -r -d --user 0 $path",
+        )
+        check("Success" in output) { "Package Manager: ${output.trim()}" }
     }
 
     private fun installThroughAdb(

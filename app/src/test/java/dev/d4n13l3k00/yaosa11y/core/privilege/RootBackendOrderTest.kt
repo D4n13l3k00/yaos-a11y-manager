@@ -9,6 +9,7 @@ class RootBackendOrderTest {
         assertEquals(
             listOf(
                 RootBackend.SU,
+                RootBackend.APP_SU,
                 RootBackend.ADB_ROOT,
                 RootBackend.CVTE_AT_SUDO,
             ),
@@ -23,11 +24,27 @@ class RootBackendOrderTest {
     @Test
     fun genericPlatformNeverTriesCvte() {
         assertEquals(
-            listOf(RootBackend.SU),
+            listOf(RootBackend.APP_SU, RootBackend.SU),
             RootBackendOrder.candidates(
                 stored = null,
                 allowAdbRestart = false,
                 supportsCvte = false,
+            ),
+        )
+    }
+
+    @Test
+    fun directAppSuDoesNotRequireAdb() {
+        assertEquals(false, RootBackend.APP_SU.requiresAdb)
+        assertEquals(true, RootBackend.SU.requiresAdb)
+    }
+
+    @Test
+    fun directSuPassesCommandAsOneArgument() {
+        assertEquals(
+            listOf("su", "-c", "pm grant dev.example android.permission.WRITE_SECURE_SETTINGS"),
+            DirectSuCommand.arguments(
+                "pm grant dev.example android.permission.WRITE_SECURE_SETTINGS",
             ),
         )
     }

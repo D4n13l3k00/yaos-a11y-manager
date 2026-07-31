@@ -38,6 +38,7 @@ class PrivilegeManager(
     private val preferences =
         appContext.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
     private val backends: Map<RootBackend, PrivilegeBackend> = listOf(
+        AppSuPrivilegeBackend(),
         AdbRootBackend(gateway),
         SuPrivilegeBackend(gateway),
         CvteAtSudoBackend(appContext, gateway),
@@ -89,15 +90,18 @@ class PrivilegeManager(
             )
         }
 
-        val adb = ensureAdb()
-        if (!adb.success) return@exclusive adb
         val packageName = ShellPolicy.requirePackageName(appContext.packageName)
         val grantCommand = "pm grant $packageName ${Manifest.permission.WRITE_SECURE_SETTINGS}"
-        val ordinaryGrant = runCatching {
-            gateway.withConnection { connection -> gateway.shell(connection, grantCommand) }
-            check(hasSecureSettingsPermission()) {
-                "ADB выполнил pm grant, но разрешение не появилось"
+        val adb = ensureAdb()
+        val ordinaryGrant = if (adb.success) {
+            runCatching {
+                gateway.withConnection { connection -> gateway.shell(connection, grantCommand) }
+                check(hasSecureSettingsPermission()) {
+                    "ADB выполнил pm grant, но разрешение не появилось"
+                }
             }
+        } else {
+            kotlin.Result.failure(IllegalStateException(adb.message))
         }
         if (ordinaryGrant.isSuccess) {
             return@exclusive Result(true, "WRITE_SECURE_SETTINGS выдано обычным ADB shell")
@@ -111,9 +115,7 @@ class PrivilegeManager(
                     "${ordinaryGrant.exceptionOrNull()?.message}. ${root.message}",
             )
         }
-        gateway.withConnection { connection ->
-            shellAsRoot(connection, root.rootBackend, grantCommand)
-        }
+        shellAsRoot(root.rootBackend, grantCommand)
         if (!hasSecureSettingsPermission()) {
             return@exclusive Result(
                 false,
@@ -130,15 +132,28 @@ class PrivilegeManager(
     }
 
     fun ensureRootBackend(allowAdbRestart: Boolean = true): Result = gateway.exclusive {
+        val stored = storedRootBackend()
+        if (stored == RootBackend.APP_SU && validateBackend(stored)) {
+            return@exclusive remember(stored)
+        }
+        if (validateBackend(RootBackend.APP_SU)) {
+            return@exclusive remember(RootBackend.APP_SU)
+        }
+
         val adb = ensureAdb()
-        if (!adb.success) return@exclusive adb
+        if (!adb.success) {
+            preferences.edit().remove(KEY_ROOT_BACKEND).apply()
+            return@exclusive Result(
+                false,
+                "KernelSU / прямой su недоступен. ${adb.message}",
+            )
+        }
 
         if (validateBackend(RootBackend.ADB_ROOT)) {
             return@exclusive remember(RootBackend.ADB_ROOT)
         }
 
-        val stored = storedRootBackend()
-        if (stored != null && validateBackend(stored)) {
+        if (stored != null && stored != RootBackend.APP_SU && validateBackend(stored)) {
             return@exclusive remember(stored)
         }
         if (validateBackend(RootBackend.SU)) {
@@ -174,7 +189,7 @@ class PrivilegeManager(
         preferences.edit().remove(KEY_ROOT_BACKEND).apply()
         Result(
             false,
-            "Root-бэкенд не найден: su недоступен" +
+            "Root-бэкенд не найден: KernelSU / прямой su и su через ADB недоступны" +
                 if (profile.supportsCvteFactoryApi) {
                     ", CVTE at_sudo недоступен; adb root: $adbRootFailure"
                 } else {
@@ -197,6 +212,17 @@ class PrivilegeManager(
         requireNotNull(backends[backend]) { "Неизвестный root-бэкенд: $backend" }
             .execute(adb, command)
 
+    fun shellAsRoot(backend: RootBackend, command: String): String {
+        val implementation = requireNotNull(backends[backend]) {
+            "Неизвестный root-бэкенд: $backend"
+        }
+        return if (backend.requiresAdb) {
+            gateway.withConnection { adb -> implementation.execute(adb, command) }
+        } else {
+            implementation.execute(null, command)
+        }
+    }
+
     fun <T> withAdb(
         connectTimeout: Int = 5_000,
         socketTimeout: Int = 30_000,
@@ -205,9 +231,15 @@ class PrivilegeManager(
 
     private fun validateBackend(backend: RootBackend): Boolean =
         runCatching {
-            gateway.withConnection { connection ->
-                isRoot(requireNotNull(backends[backend]).execute(connection, "id"))
+            val implementation = requireNotNull(backends[backend])
+            val output = if (backend.requiresAdb) {
+                gateway.withConnection { connection ->
+                    implementation.execute(connection, "id")
+                }
+            } else {
+                implementation.execute(null, "id")
             }
+            isRoot(output)
         }.getOrDefault(false)
 
     private fun waitForAdb(): Boolean {

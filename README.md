@@ -21,7 +21,8 @@
 > Полный автономный режим и native-hook проверены на DEXP 43UCY3 с платой
 > TP.MT9632.PB721. Guard-режим не зависит от CVTE и работает на других
 > платформах после выдачи `WRITE_SECURE_SETTINGS`. Автоматическое включение ADB
-> и root-бэкенды зависят от прошивки.
+> доступно только на поддерживаемых устройствах; root также можно получить через
+> Magisk или KernelSU.
 
 ## ✨ Возможности
 
@@ -106,10 +107,10 @@
 | Локальный ADB | `127.0.0.1:5555`, `ro.adb.secure=0` |
 
 Если локальный ADB уже включён, приложение сначала пытается выдать
-`WRITE_SECURE_SETTINGS` обычной
-командой `pm grant`. Для native-hook привилегированный бэкенд выбирается
-автоматически: уже запущенный root-adbd, Magisk/`su`, штатный `adb root`, затем
-CVTE `at_sudo`.
+`WRITE_SECURE_SETTINGS` обычной командой `pm grant`. При недоступном ADB
+привилегированные функции могут работать напрямую через KernelSU или Magisk.
+Также поддерживаются root-adbd, штатный `adb root`, `su` через ADB shell и CVTE
+`at_sudo`.
 
 На прошивке без CVTE приложение не сможет программно включить выключенный ADB,
 если производитель не предоставляет другого API. После ручного включения ADB
@@ -138,7 +139,7 @@ Native-hook рассчитан на `com.yandex.tv.services.platform`. На др
 
 ```powershell
 adb connect TV_IP:5555
-adb install -r .\YaOS-A11y-Manager-v1.2.0.apk
+adb install -r .\YaOS-A11y-Manager-v1.2.1.apk
 ```
 
 Откройте **YaOS A11y Manager** в списке приложений. Если ADB уже работает,
@@ -154,8 +155,9 @@ root. Состояние каждого этапа видно в разделе 
 127.0.0.1:5555 ──┼─ обычный ADB shell ──► pm grant ──► Android guard
                  │
                  └─ root backend
+                      ├─ KernelSU / прямой su
                       ├─ root-adbd
-                      ├─ Magisk / su
+                      ├─ su через ADB shell
                       └─ CVTE at_sudo
                               │
                               └─► необязательный native-hook YAOS
@@ -186,13 +188,14 @@ IFacApiNetWork.setAdbStatus(1)  -> transaction 37
 
 ### 🔑 Привилегированные бэкенды
 
-`PrivilegeManager` отделяет переносимый guard от механизмов конкретной
-прошивки. Автоматическое определение выполняется в таком порядке:
+`PrivilegeManager` отделяет переносимый guard от конкретного способа получения
+root. Автоматическое определение выполняется в таком порядке:
 
-1. уже запущенный root-adbd;
-2. Magisk или другой рабочий `su`;
-3. попытка штатного `adb root` на `userdebug`/`eng`;
-4. CVTE `at_sudo`.
+1. KernelSU, Magisk или другой прямой `su` приложения;
+2. уже запущенный root-adbd;
+3. рабочий `su` через ADB shell;
+4. попытка штатного `adb root` на `userdebug`/`eng`;
+5. CVTE `at_sudo`.
 
 Выбранный способ проверяется командой `id` и сохраняется только после ответа
 `uid=0(root)`. Если root не найден, это не считается ошибкой основного режима:
